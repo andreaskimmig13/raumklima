@@ -150,6 +150,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .cell .ct{font-family:var(--display);font-weight:700;font-size:1.05rem;color:var(--temp);font-variant-numeric:tabular-nums;line-height:1.1}
 .cell .ch{font-family:var(--display);font-weight:700;font-size:1.05rem;color:var(--hum);font-variant-numeric:tabular-nums;line-height:1.1}
 .cell .ch.hi{color:var(--bad)}
+.cell .cc{font-size:.74rem;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.cell .cc.mid{color:var(--warn)} .cell .cc.hi{color:var(--bad)}
 .cell .age{font-size:.68rem;color:var(--muted)}
 .cell .sd{position:absolute;top:8px;right:7px;width:8px;height:8px;border-radius:50%}
 .sd.ok,.dot.ok{background:var(--ok)} .sd.warn,.dot.warn{background:var(--warn)} .sd.bad,.dot.bad{background:var(--bad)}
@@ -165,6 +167,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .legend i.dot{width:8px;height:8px;border-radius:50%}
 .legend i.sw{width:14px;height:10px;border-radius:2px}
 .sw.bath{background:var(--bath-bg);outline:1px solid var(--bath-line)}
+.floorbtns{display:flex;gap:6px;flex-wrap:wrap}
+.floorbtns button{min-height:42px;padding:8px 12px;font-size:.9rem}
 footer{font-size:.82rem;color:var(--muted)}
 </style>
 
@@ -178,6 +182,7 @@ footer{font-size:.82rem;color:var(--muted)}
     </div>
     <div class="row">
       <button class="primary" id="btnSyncAll" type="button">Alle Sensoren abrufen</button>
+      <div class="floorbtns" id="floorBtns" role="group" aria-label="Stockwerk abrufen"></div>
     </div>
   </header>
 
@@ -280,6 +285,17 @@ footer{font-size:.82rem;color:var(--muted)}
         <label class="f">Längengrad (optional)<input id="setLon" type="number" step="0.01"></label>
       </div>
       <div class="row" style="margin-top:10px"><button type="button" id="btnSaveSettings">Einstellungen speichern</button></div>
+    </details>
+
+    <details id="naBox">
+      <summary>Netatmo</summary>
+      <p class="small muted" style="margin-top:0">Verbindung über deine eigene Google-Apps-Script-Brücke. Anleitung und Script: <a href="https://github.com/andreaskimmig13/raumklima/blob/main/NETATMO.md" target="_blank" rel="noopener">NETATMO.md im Repository</a>.</p>
+      <div class="fields">
+        <label class="f" style="grid-column:1/-1">Web-App-URL der Brücke<input id="setNaUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
+        <label class="f">Schlüssel<input id="setNaKey" type="password" autocomplete="off"></label>
+      </div>
+      <div class="row" style="margin-top:10px"><button type="button" id="btnNaSave" class="primary">Speichern &amp; testen</button><button type="button" id="btnNaNow">Jetzt abrufen</button></div>
+      <p class="small" id="naStatus" style="margin-bottom:0"></p>
     </details>
 
     <details>
@@ -385,22 +401,23 @@ function valid(t,h){ return isFinite(t)&&t>-40&&t<85&&h>=0&&h<=100; }
 var EMPTY_T=-32768;
 function newBucket(sid,day){ var t=new Int16Array(1440); t.fill(EMPTY_T); var h=new Uint8Array(1440); h.fill(255);
   return {key:sid+'|'+day, sid:sid, day:day, t:t, h:h, q:new Uint8Array(1440)}; }
+function ensureC(b){ if(!b.c) b.c=new Uint16Array(1440); return b.c; }
 function mergeIntoBuckets(buckets, sid, recs){ // buckets: Map day->bucket; q höher oder gleich überschreibt
   var touched=new Set();
   for(var i=0;i<recs.length;i++){ var r=recs[i], day=Math.floor(r.ts/DAY), slot=Math.floor((r.ts-day*DAY)/MIN);
     var b=buckets.get(day); if(!b){ b=newBucket(sid,day); buckets.set(day,b); }
-    if(r.q>=b.q[slot]){ b.t[slot]=Math.round(r.t*10); b.h[slot]=r.h; b.q[slot]=r.q; touched.add(day); } }
+    if(r.q>=b.q[slot]){ b.t[slot]=Math.round(r.t*10); b.h[slot]=r.h; b.q[slot]=r.q; if(r.c!=null) ensureC(b)[slot]=Math.max(1,Math.min(65000,Math.round(r.c))); else if(b.c) b.c[slot]=0; touched.add(day); } }
   return touched;
 }
 function bucketsToSeries(list){ // -> {ts,t,h,q} sortiert
   list=list.slice().sort(function(a,b){return a.day-b.day;});
-  var ts=[],t=[],h=[],q=[];
+  var ts=[],t=[],h=[],q=[],c=[],anyC=false;
   for(var i=0;i<list.length;i++){ var b=list[i]; for(var s=0;s<1440;s++){ if(b.q[s]===0||b.t[s]===EMPTY_T) continue;
-    ts.push(b.day*DAY+s*MIN); t.push(b.t[s]/10); h.push(b.h[s]); q.push(b.q[s]); } }
-  return {ts:ts,t:t,h:h,q:q};
+    ts.push(b.day*DAY+s*MIN); t.push(b.t[s]/10); h.push(b.h[s]); q.push(b.q[s]); var cv=b.c&&b.c[s]?b.c[s]:null; if(cv) anyC=true; c.push(cv); } }
+  var out={ts:ts,t:t,h:h,q:q}; if(anyC) out.c=c; return out;
 }
 function sliceSeries(S,from,to){ var a=lowerBound(S.ts,from), b=lowerBound(S.ts,to+1);
-  return {ts:S.ts.slice(a,b),t:S.t.slice(a,b),h:S.h.slice(a,b),q:S.q.slice(a,b)}; }
+  var o={ts:S.ts.slice(a,b),t:S.t.slice(a,b),h:S.h.slice(a,b),q:S.q.slice(a,b)}; if(S.c) o.c=S.c.slice(a,b); return o; }
 function lowerBound(arr,x){ var lo=0,hi=arr.length; while(lo<hi){ var m=(lo+hi)>>1; if(arr[m]<x) lo=m+1; else hi=m; } return lo; }
 
 /* --- Auswertung --- */
@@ -434,7 +451,8 @@ function analyze(sensor, S, from, to, st, outdoorAt){
   var R=sliceSeries(S,from,to), n=R.ts.length;
   var thr=sensor.type==='bad'?st.thrBath:st.thr;
   var res={n:n, thr:thr, from:from, to:to, phases:[], events:[], minutes:n, minuteQ:0, humidMin:0, dryMin:0, coldMin:0, mouldMin:0, mouldKnown:false,
-    meanT:null, meanH:null, maxH:null, longestPhase:0, gaps:[], days:0, airDays:0, startHours:new Array(24).fill(0), series:R};
+    meanT:null, meanH:null, maxH:null, longestPhase:0, gaps:[], days:0, airDays:0, startHours:new Array(24).fill(0), series:R,
+    co2Known:false, co2Min:0, co2Over1000:0, co2Over1400:0, co2Max:0, co2TopHour:-1};
   if(!n) return res;
   var sT=0,sH=0,maxH=0;
   for(var i=0;i<n;i++){ sT+=R.t[i]; sH+=R.h[i]; if(R.h[i]>maxH) maxH=R.h[i]; if(R.q[i]>=2) res.minuteQ++;
@@ -442,6 +460,8 @@ function analyze(sensor, S, from, to, st, outdoorAt){
     if(outdoorAt){ var te=outdoorAt(R.ts[i]); if(te!=null){ res.mouldKnown=true; if(te<R.t[i]-3 && surfaceRH(R.t[i],R.h[i],te)>=80) res.mouldMin++; } }
     if(i>0 && R.ts[i]-R.ts[i-1]>3*HOUR) res.gaps.push({from:R.ts[i-1],to:R.ts[i]}); }
   res.meanT=sT/n; res.meanH=sH/n; res.maxH=maxH;
+  if(R.c){ var hrs=new Array(24).fill(0); for(var ci=0;ci<n;ci++){ var cv=R.c[ci]; if(!cv) continue; res.co2Known=true; res.co2Min++; if(cv>res.co2Max) res.co2Max=cv; if(cv>=1000){ res.co2Over1000++; hrs[new Date(R.ts[ci]).getHours()]++; } if(cv>=1400) res.co2Over1400++; }
+    var best=0; hrs.forEach(function(v,hh){ if(v>best){ best=v; res.co2TopHour=hh; } }); }
   res.phases=humidPhases(R,thr,st.minPhase);
   res.phases.forEach(function(p){ if(p.dur>res.longestPhase) res.longestPhase=p.dur; res.startHours[new Date(p.from).getHours()]++; });
   res.events=airingEvents(R);
@@ -452,13 +472,14 @@ function analyze(sensor, S, from, to, st, outdoorAt){
 }
 function localDayKey(ts){ var d=new Date(ts); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
 function fmtDur(ms){ var m=Math.round(ms/MIN); if(m<60) return m+' min'; var h=Math.floor(m/60), r=m%60; return h+' h'+(r?' '+r+' min':''); }
+function windDir(a){ var d=['N','NO','O','SO','S','SW','W','NW']; return d[Math.round(((a%360)+360)%360/45)%8]; }
 function airDuration(te){ if(te==null) return null; if(te<0) return '4–6 min'; if(te<10) return '8–12 min'; if(te<16) return '15–20 min'; return '25–30 min'; }
 
 function recommendations(sensor, A, ctx){
   var tips=[], type=ROOMTYPES[sensor.type]||ROOMTYPES.wohn, isBath=sensor.type==='bad', isBed=sensor.type==='schlaf';
   if(!A.n) return tips;
   var pctHumid=A.humidMin/A.minutes, pctDry=A.dryMin/A.minutes, pctCold=A.coldMin/A.minutes;
-  var hasMinute=A.minuteQ>A.minutes*0.5;
+  var naS=sensor.source==='netatmo', hasMinute=naS||A.minuteQ>A.minutes*0.5;
   var perDay=A.airDays>0?A.events.length/A.airDays:null;
   var longOpen=A.events.filter(function(e){return e.kind==='offen';});
   var topHour=-1,topCnt=0; A.startHours.forEach(function(c,h){ if(c>topCnt){topCnt=c;topHour=h;} });
@@ -471,7 +492,7 @@ function recommendations(sensor, A, ctx){
     else txt+=' Nach Kochen, Duschen oder Wäschetrocknen gezielt stoßlüften, am besten quer durch die Wohnung.';
     tips.push({sev:pctHumid>0.2||A.longestPhase>6*HOUR?'bad':'warn', title:'Zu lange feucht', text:txt});
   }
-  if(hasMinute && perDay!=null && perDay<1.5 && (pctHumid>0.04||A.meanH>58)){
+  if(!naS && hasMinute && perDay!=null && perDay<1.5 && (pctHumid>0.04||A.meanH>58)){
     tips.push({sev:'warn', title:'Selten gelüftet', text:'Erkannt wurden im Schnitt '+perDay.toFixed(1).replace('.',',')+' Lüftungen pro Tag. Bei dieser Feuchte sind 2–4 kurze Stoßlüftungen täglich sinnvoll.'});
   }
   if(longOpen.length){ var last=longOpen[longOpen.length-1];
@@ -484,12 +505,16 @@ function recommendations(sensor, A, ctx){
   if(A.mouldKnown && A.mouldMin>12*60 && A.mouldMin>A.minutes*0.05){
     tips.push({sev:'bad', title:'Schimmelrisiko an kalten Ecken', text:'Geschätzt aus Raum- und Außenklima lag die Feuchte an der kältesten Stelle der Außenwand '+fmtDur(A.mouldMin*MIN)+' über 80 %. Ab dort kann Schimmel wachsen. Möbel 5–10 cm von Außenwänden abrücken und die Raumfeuchte im Winter möglichst unter 55 % halten.'});
   }
+  if(A.co2Known && A.co2Min>120 && A.co2Over1000/A.co2Min>0.1){
+    var share=A.co2Over1000/A.co2Min;
+    tips.push({sev:A.co2Over1400/A.co2Min>0.1?'bad':'warn', title:'Verbrauchte Luft', text:'Der CO₂-Wert lag '+Math.round(share*100)+' % der Zeit über 1.000 ppm'+(A.co2TopHour>=0?', am häufigsten gegen '+A.co2TopHour+' Uhr':'')+', höchstens bei '+A.co2Max.toLocaleString('de-DE')+' ppm. Ab 1.000 ppm lässt die Konzentration nach, ab 1.400 ppm gilt die Luft als schlecht. Dann stoßlüften, auch wenn die Feuchte noch in Ordnung ist.'});
+  }
   if(pctDry>0.25){
     tips.push({sev:'ok', title:'Eher trockene Luft', text:Math.round(pctDry*100)+' % der Zeit unter 35 %. Im Winter ist das normal. Kürzer lüften hilft, Luftbefeuchter sind meist nicht nötig.'});
   }
   if(!hasMinute){
     tips.push({sev:'warn', title:'Nur Stundenwerte vorhanden', text:sensor.proto==='S'||/TP357S/i.test(sensor.btName||'')?'Für die Lüftungserkennung braucht es Minutenwerte. Den Sensor mindestens alle 14 Tage abrufen, der Speicher reicht etwa 20 Tage.':'Dieses Modell speichert Minutenwerte nur für die letzten 24 Stunden. Für eine Lüftungserkennung den Sensor täglich abrufen.'});
-  } else if(A.gaps.length){
+  } else if(!naS && A.gaps.length){
     tips.push({sev:'warn', title:'Lücken im Verlauf', text:'Es fehlen Daten, zuletzt ab '+fmtDateTime(A.gaps[A.gaps.length-1].from)+'. Den Sensor regelmäßig abrufen, damit der Gerätespeicher nicht überläuft.'});
   }
   if(!tips.length || tips.every(function(t){return t.sev==='ok';})){
@@ -549,8 +574,8 @@ function makeDemo(now){
 /* ===== Oberfläche, Bluetooth, Speicher ===== */
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
-var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map()};
-var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true};
+var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null};
+var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true, naUrl:'', naKey:''};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 var statusTimer=null;
@@ -596,6 +621,7 @@ async function loadAll(){
     state.settings.floorsV2=true; await safe(dbPut('meta',Object.assign({},state.settings,{k:'settings'}))); }
   for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i]; state.series[s.id]=bucketsToSeries((await safe(dbBucketsFor(s.id)))||[]); }
   var o=await safe(dbGet('meta','outdoor')); if(o) state.outdoor=o;
+  var nm=await safe(dbGet('meta','netatmo')); if(nm&&nm.na) state.na=nm.na; var nh=await safe(dbGet('meta','naout')); if(nh) state.naOutHist=nh;
 }
 async function safe(p){ try{ return await p; }catch(e){ return null; } }
 
@@ -726,7 +752,7 @@ async function syncSensor(sensor,dev){
     return total;
   } finally { conn.onPacket=null; try{ dev.gatt.disconnect(); }catch(e){} progress(null); }
 }
-function stripSensor(s){ return {advOk:!!s.advOk,id:s.id,name:s.name,type:s.type,floor:s.floor==null?1:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
+function stripSensor(s){ return {hidden:!!s.hidden,source:s.source||null,battery:s.battery==null?null:s.battery,reachable:s.reachable!==false,advOk:!!s.advOk,id:s.id,name:s.name,type:s.type,floor:s.floor==null?1:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
 
 async function doSync(sensor){
   if(state.busy) return; if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
@@ -753,13 +779,16 @@ async function advFallback(sensor,dev){
   sensor.live={t:ad.t,h:ad.h,ts:ad.ts}; await storeRecords(sensor.id,[{ts:Math.floor(ad.ts/MIN)*MIN,t:ad.t,h:ad.h,q:2}]); await safe(dbPut('sensors',stripSensor(sensor)));
   logLine('Aktueller Wert von „'+sensor.name+'“ aus dem Funksignal übernommen (ohne Verlauf).'); return true;
 }
-async function syncAll(auto){
+async function syncAll(auto,floor){
   if(state.busy) return;
-  if(state.demo||!state.sensors.length){ showTab('einstellungen'); setStatus('Koppel zuerst einen Sensor.'); return; }
-  if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
+  var bt=state.sensors.filter(function(s){ return !isNa(s)&&!s.demo; });
+  if(state.demo||(!bt.length&&!naConfigured())){ showTab('einstellungen'); setStatus('Koppel zuerst einen Sensor.'); return; }
+  if(floor==null && naConfigured()){ var nr=await syncNetatmo(!auto); if(nr&&!nr.skipped){ renderAll(); if(!nr.error&&!auto) setStatus('Netatmo aktualisiert.'); } }
+  if(!bt.length){ if(state.naErr&&!auto) setStatus('Netatmo: '+state.naErr,true); return; }
+  if(!btAvailable()){ if(!auto) setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
   await knownDevices();
-  var list=state.sensors.filter(function(s){ return !auto || (state.devices.has(s.id) && (!s.lastSync || Date.now()-s.lastSync>state.settings.autoAfterH*HOUR)); });
-  if(auto&&!list.length){ renderSensors(); return; }
+  var list=bt.filter(function(s){ if(floor!=null && (s.floor==null?1:s.floor)!==floor) return false; return !auto || (state.devices.has(s.id) && (!s.lastSync || Date.now()-s.lastSync>state.settings.autoAfterH*HOUR)); });
+  if(!list.length){ renderSensors(); if(floor!=null) setStatus('Im '+floorNames()[floor]+' ist kein Bluetooth-Sensor eingetragen.'); return; }
   state.cancel=false; state.busy=true; updateButtons();
   var ok=0, miss=[], failed=[], partial=[];
   for(var i=0;i<list.length;i++){ var s=list[i], dev=state.devices.get(s.id);
@@ -799,6 +828,39 @@ function handleBtError(e){ var m=e&&e.message||String(e);
   if(e&&(e.name==='SecurityError'||e.name==='NotAllowedError')) { setStatus('Bluetooth wurde blockiert. Die App muss über eine https-Adresse in Chrome laufen, nicht in einer Vorschau.',true); return; }
   logLine('Fehler: '+m); setStatus(m,true); }
 
+/* --- Netatmo (über die Google-Apps-Script-Brücke) --- */
+function naConfigured(){ return !!(state.settings&&state.settings.naUrl&&state.settings.naKey); }
+function isNa(s){ return s&&s.source==='netatmo'; }
+async function fetchNetatmo(force){
+  if(!naConfigured()||state.demo) return {skipped:true};
+  var meta=(await safe(dbGet('meta','netatmo')))||{k:'netatmo'};
+  if(!force && meta.fetched && Date.now()-meta.fetched<8*MIN && state.na) return {skipped:true};
+  var wantHist=!meta.histAt || Date.now()-meta.histAt>6*HOUR;
+  var days=wantHist?(meta.histAt?Math.min(14,Math.ceil((Date.now()-meta.histAt)/DAY)+1):14):0;
+  var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+(days?'&days='+days:'');
+  var r=await withTimeout(fetch(url,{redirect:'follow'}),45000,'Die Netatmo-Brücke antwortet nicht.');
+  var j=await r.json(); if(j.error) throw new Error('Netatmo-Brücke: '+j.error);
+  var na={fetched:Date.now(), outdoor:null, rain:null, wind:null, indoor:0};
+  for(var si=0;si<(j.stations||[]).length;si++){ var st=j.stations[si];
+    for(var ii=0;ii<st.indoor.length;ii++){ var ind=st.indoor[ii], sid='na-'+ind.id, sensor=state.sensors.find(function(x){return x.id===sid;});
+      if(!sensor){ sensor={id:sid,name:ind.name||'Netatmo innen',type:'wohn',floor:1,pos:0,source:'netatmo',btName:'Netatmo '+(ind.module?'Innenmodul':'Basisstation'),created:Date.now()}; state.sensors.push(sensor); state.series[sid]={ts:[],t:[],h:[],q:[]}; }
+      var recs=[];
+      if(Array.isArray(ind.history)) ind.history.forEach(function(row){ var ts=row[0], t=row[1], h=row[2], c=row[3]; if(t==null||h==null) return; for(var m=0;m<30;m++){ var tt=ts+m*MIN; if(tt>Date.now()) break; recs.push({ts:tt,t:t,h:Math.round(h),q:1,c:c}); } });
+      if(ind.t!=null&&ind.h!=null&&ind.ts){ sensor.live={t:ind.t,h:Math.round(ind.h),co2:ind.co2,ts:ind.ts}; recs.push({ts:Math.floor(ind.ts/MIN)*MIN,t:ind.t,h:Math.round(ind.h),q:2,c:ind.co2}); }
+      if(recs.length) await storeRecords(sid,recs);
+      sensor.lastSync=Date.now(); sensor.battery=ind.battery; sensor.reachable=ind.reachable; await safe(dbPut('sensors',stripSensor(sensor))); na.indoor++; }
+    if(st.outdoor&&st.outdoor.t!=null){ na.outdoor={t:st.outdoor.t,h:st.outdoor.h,ts:st.outdoor.ts,battery:st.outdoor.battery,reachable:st.outdoor.reachable};
+      if(Array.isArray(st.outdoor.history)){ var old=(await safe(dbGet('meta','naout')))||{k:'naout',ts:[],t:[],h:[]}, map={};
+        old.ts.forEach(function(ts,i){ map[ts]=[old.t[i],old.h[i]]; }); st.outdoor.history.forEach(function(row){ if(row[1]!=null) map[row[0]]=[row[1],row[2]]; });
+        var keys=Object.keys(map).map(Number).filter(function(ts){ return ts>Date.now()-120*DAY; }).sort(function(a,b){return a-b;});
+        var hist={k:'naout',ts:keys,t:keys.map(function(k){return map[k][0];}),h:keys.map(function(k){return map[k][1];})}; await safe(dbPut('meta',hist)); state.naOutHist=hist; } }
+    if(st.rain) na.rain=st.rain; if(st.wind) na.wind=st.wind; }
+  state.na=na; meta.fetched=na.fetched; if(days) meta.histAt=Date.now(); meta.na=na; await safe(dbPut('meta',meta));
+  return na;
+}
+async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!r.skipped) logLine('Netatmo: '+r.indoor+' Innenmodul(e)'+(r.outdoor?', Außenmodul':'')+(r.rain?', Regen':'')+(r.wind?', Wind':'')+' aktualisiert.'); return r; }
+  catch(e){ logLine('Netatmo-Fehler: '+e.message); state.naErr=e.message; return {error:e.message}; } }
+
 /* --- Außenwetter (Open-Meteo, ohne Schlüssel) --- */
 async function loadOutdoor(){
   var st=state.settings; if(st.lat==null||st.lon==null) return; if(state.outdoor && Date.now()-state.outdoor.fetched<45*MIN && state.outdoor.lat===st.lat && state.outdoor.lon===st.lon) return;
@@ -812,18 +874,22 @@ async function loadOutdoor(){
 }
 function outdoorAtFn(){
   if(state.demo) return function(ts){ return demoOutdoor(ts); };
-  var o=state.outdoor; if(!o||!o.ts||!o.ts.length) return null;
+  var o=state.outdoor, n=state.naOutHist, hasO=o&&o.ts&&o.ts.length, hasN=n&&n.ts&&n.ts.length;
+  if(!hasO&&!hasN) return null;
+  function pick(src,ts,maxGap){ var i=lowerBound(src.ts,ts); if(i>=src.ts.length) i=src.ts.length-1; if(i>0&&Math.abs(src.ts[i-1]-ts)<Math.abs(src.ts[i]-ts)) i--; if(Math.abs(src.ts[i]-ts)>maxGap) return null; var v=src.t[i]; return v==null?null:v; }
+  if(hasN) return function(ts){ var v=pick(n,ts,45*MIN); if(v==null&&hasO) v=pick(o,ts,2*HOUR); return v; };
   return function(ts){ var i=lowerBound(o.ts,ts); if(i>=o.ts.length) i=o.ts.length-1; if(i>0&&Math.abs(o.ts[i-1]-ts)<Math.abs(o.ts[i]-ts)) i--; if(Math.abs(o.ts[i]-ts)>2*HOUR) return null; var v=o.t[i]; return v==null?null:v; };
 }
 function outdoorNow(){
   if(state.demo){ var t=demoOutdoor(Date.now()); return {t:t,h:85}; }
+  if(state.na&&state.na.outdoor&&state.na.outdoor.ts&&Date.now()-state.na.outdoor.ts<90*MIN) return {t:state.na.outdoor.t,h:state.na.outdoor.h,src:'Netatmo'};
   var o=state.outdoor; if(!o) return null; if(o.cur&&Date.now()-o.fetched<3*HOUR) return o.cur;
   var i=lowerBound(o.ts,Date.now()); if(i>=o.ts.length) i=o.ts.length-1; return o.t[i]!=null?{t:o.t[i],h:o.h[i]}:null;
 }
 
 /* --- Darstellung --- */
-function currentOf(s){ var S=state.series[s.id]; var last=S&&S.ts.length?{ts:S.ts[S.ts.length-1],t:S.t[S.t.length-1],h:S.h[S.h.length-1]}:null;
-  if(s.live&&(!last||s.live.ts>last.ts)) return s.live; return last; }
+function currentOf(s){ var S=state.series[s.id], L=S&&S.ts.length?S.ts.length-1:-1; var last=L>=0?{ts:S.ts[L],t:S.t[L],h:S.h[L],co2:S.c?S.c[L]:null,q:S.q[L]}:null;
+  if(s.live&&(!last||s.live.ts>last.ts||(last.q<2&&s.live.ts>last.ts-2*HOUR))) return s.live; return last; }
 function ageText(ts){ var m=Math.round((Date.now()-ts)/MIN); if(m<2) return 'gerade eben'; if(m<60) return 'vor '+m+' min'; var h=Math.round(m/60); if(h<36) return 'vor '+h+' h'; return 'vor '+Math.round(h/24)+' Tagen'; }
 function thrFor(s){ return s.type==='bad'?state.settings.thrBath:state.settings.thr; }
 function floorNames(){ var f=(state.settings&&state.settings.floors)||DEFAULTS.floors; return [f[0],f[1],f[2]]; }
@@ -831,6 +897,8 @@ function roomStatus(s,c){
   if(!c) return {cls:'warn',txt:'keine Daten'};
   if(!s.demo&&Date.now()-c.ts>2*DAY) return {cls:'warn',txt:'Stand '+ageText(c.ts)};
   if(c.h>=thrFor(s)) return {cls:'bad',txt:'zu feucht – lüften'};
+  if(c.co2&&c.co2>=1400) return {cls:'bad',txt:'CO₂ hoch – lüften'};
+  if(c.co2&&c.co2>=1000) return {cls:'warn',txt:'CO₂ erhöht'};
   if(c.t<16&&s.type!=='keller') return {cls:'warn',txt:'kühl'};
   if(c.h<35) return {cls:'warn',txt:'trocken'};
   return {cls:'ok',txt:'gut'};
@@ -839,7 +907,7 @@ function renderRooms(){
   var box=$('#house'); box.textContent='';
   var roof=el('div','roof'); roof.appendChild(el('div','chimney')); box.appendChild(roof);
   var names=floorNames(), floors=[[],[],[]];
-  state.sensors.forEach(function(s,ix){ var f=s.floor==null?1:Math.max(0,Math.min(2,s.floor)); floors[f].push({s:s,ix:ix}); });
+  state.sensors.forEach(function(s,ix){ if(s.hidden) return; var f=s.floor==null?1:Math.max(0,Math.min(2,s.floor)); floors[f].push({s:s,ix:ix}); });
   var B=0; floors.forEach(function(list){ var n=list.filter(function(x){return x.s.type==='bad';}).length; if(n>B) B=n; }); B=Math.min(B,2);
   for(var f=2;f>=0;f--){
     if(f===0){ box.appendChild(el('div','ground')); }
@@ -868,6 +936,7 @@ function cellFor(s){
   b.appendChild(el('span','cn',s.name)); b.appendChild(el('span','sd '+st.cls));
   b.appendChild(el('span','ct',c?fmt1(c.t)+' °C':'–'));
   b.appendChild(el('span','ch'+(c&&c.h>=thrFor(s)?' hi':''),c?c.h+' %':'–'));
+  if(c&&c.co2) b.appendChild(el('span','cc'+(c.co2>=1400?' hi':(c.co2>=1000?' mid':'')),Math.round(c.co2).toLocaleString('de-DE')+' ppm'));
   if(st.cls!=='ok') b.appendChild(el('span','age',st.txt));
   b.addEventListener('click',function(){ state.sel=s.id; showTab('verlauf'); });
   return b;
@@ -908,7 +977,8 @@ function renderAnalysis(){
   stats.appendChild(statEl(avg?fmtDur(avg):'–','Ø Lüftungsdauer'));
   if(!A.phases.length) pl.appendChild(el('div','li muted','Keine Phase über '+A.thr+' %, die länger als '+state.settings.minPhase+' min dauerte.'));
   A.phases.slice(-8).reverse().forEach(function(p){ var li=el('div','li'); li.appendChild(el('span',null,fmtDateTime(p.from))); li.appendChild(el('span','r',fmtDur(p.dur)+' · max '+p.maxH+' %')); pl.appendChild(li); });
-  if(A.minuteQ<A.n*0.5) al.appendChild(el('div','li muted','Für die Lüftungserkennung fehlen Minutenwerte.'));
+  if(s.source==='netatmo') al.appendChild(el('div','li muted','Netatmo liefert Werte im 30-Minuten-Raster, daraus lassen sich Lüftungen nicht zuverlässig erkennen.'));
+  else if(A.minuteQ<A.n*0.5) al.appendChild(el('div','li muted','Für die Lüftungserkennung fehlen Minutenwerte.'));
   else if(!A.events.length) al.appendChild(el('div','li muted','Keine Lüftung erkannt.'));
   A.events.slice(-8).reverse().forEach(function(e){
     var kind={stoss:'Stoßlüften',lang:'länger gelüftet',offen:'lange offen'}[e.kind];
@@ -943,7 +1013,7 @@ function renderTips(){
 }
 function renderOutdoor(){
   var p=$('#outPanel'); p.textContent=''; var on=outdoorNow();
-  $('#outHint').textContent=state.demo?'Beispielwerte':(state.outdoor?'Open-Meteo · '+state.settings.place:'');
+  $('#outHint').textContent=state.demo?'Beispielwerte':(on&&on.src==='Netatmo'?'Netatmo · '+ageText(state.na.outdoor.ts):(state.outdoor?'Open-Meteo · '+state.settings.place:''));
   if(!on && !state.demo && (state.settings.lat==null||state.settings.lon==null)){ p.appendChild(el('p','muted small','Trage unter „Sensoren → Einstellungen“ deinen Wohnort ein, dann zeigt die App hier das Außenwetter und ob Lüften gerade die Feuchte senkt.')); return; }
   if(!on){ p.appendChild(el('p','muted small',state.outdoorErr?'Außenwetter konnte nicht geladen werden (offline oder in dieser Vorschau gesperrt).':'Außenwetter wird geladen …')); return; }
   var ahOut=absHum(on.t,on.h), row=el('div','out');
@@ -951,6 +1021,14 @@ function renderOutdoor(){
   var b=el('span','v h',String(Math.round(on.h))); b.appendChild(el('small',null,'%')); row.appendChild(b);
   row.appendChild(el('span','muted small num',fmt1(ahOut)+' g/m³ Wasser in der Luft'));
   p.appendChild(row);
+  var na=state.na, rain=na&&na.rain&&na.rain.ts&&Date.now()-na.rain.ts<90*MIN?na.rain:null, wind=na&&na.wind&&na.wind.ts&&Date.now()-na.wind.ts<90*MIN?na.wind:null;
+  if(rain||wind){ var r2=el('div','out small');
+    if(rain) r2.appendChild(el('span','num','Regen: '+(rain.h1!=null?fmt1(rain.h1)+' mm letzte Stunde':'–')+(rain.h24!=null?' · '+fmt1(rain.h24)+' mm heute':'')));
+    if(wind) r2.appendChild(el('span','num','Wind: '+(wind.strength!=null?Math.round(wind.strength)+' km/h':'–')+(wind.gust!=null?' · Böen '+Math.round(wind.gust)+' km/h':'')+(wind.angle!=null?' aus '+windDir(wind.angle):'')));
+    p.appendChild(r2);
+    var raining=rain&&((rain.now!=null&&rain.now>0)||(rain.h1!=null&&rain.h1>0.1)), stormy=wind&&wind.gust!=null&&wind.gust>=40;
+    if(raining||stormy){ var w=el('p','small'); w.appendChild(el('span','pill '+(stormy?'bad':'warn'),stormy?'Starker Wind':'Es regnet'));
+      w.appendChild(document.createTextNode(' '+(stormy?'Fenster nicht gekippt oder unbeaufsichtigt offen lassen. Kurz stoßlüften geht, auf der windabgewandten Seite.':'Kurz stoßlüften ist trotzdem sinnvoll, die Feuchte draußen kommt kaum ins Haus. Fenster aber nicht gekippt lassen, es kann reinregnen.'))); p.appendChild(w); } }
   var dur=airDuration(on.t); p.appendChild(el('p','small',on.t<16?'Stoßlüften bei dieser Außentemperatur: etwa '+dur+', Fenster ganz öffnen, Heizkörper dabei zudrehen.':'Bei dieser Außentemperatur darf länger gelüftet werden, etwa '+dur+'.'));
   var list=el('div','list');
   state.sensors.forEach(function(s){ var c=currentOf(s); if(!c) return; var ahIn=absHum(c.t,c.h), diff=ahIn-ahOut, li=el('div','li');
@@ -964,22 +1042,22 @@ function renderSensors(){
   var note=$('#btNote');
   if(!btAvailable()){ note.hidden=false; note.textContent='Bluetooth ist in diesem Browser bzw. in dieser Vorschau nicht verfügbar. Öffne die App über ihre https-Adresse in Chrome auf Android oder am PC.'; }
   else note.hidden=true;
-  var mem=$('#memNote'), real=state.sensors.filter(function(x){return !x.demo;});
+  var mem=$('#memNote'), real=state.sensors.filter(function(x){return !x.demo&&!isNa(x);});
   if(btAvailable()&&real.length){ var k=real.filter(function(x){ return state.devices.has(x.id); }).length; mem.hidden=false;
     mem.textContent=k===real.length?(k===1?'Chrome merkt sich den Sensor':'Chrome merkt sich alle '+k+' Sensoren')+' – „Alle Sensoren abrufen“ und der automatische Abruf funktionieren ohne Auswahl.':(k? 'Chrome merkt sich '+k+' von '+real.length+' Sensoren. Die übrigen einmal über „Neuen Sensor koppeln“ erneut auswählen, Messwerte bleiben erhalten.':'Chrome merkt sich die Sensoren noch nicht. Ist das Flag aktiv, die Sensoren einmal über „Neuen Sensor koppeln“ erneut auswählen – die Messwerte bleiben erhalten.'); }
   else mem.hidden=true;
   $('#btnPair').disabled=!btAvailable()||state.busy; $('#btnPairAll').disabled=!btAvailable()||state.busy;
   state.sensors.forEach(function(s){
     var d=el('div','sensor'); var head=el('div','row'); head.style.justifyContent='space-between';
-    var t=el('div'); t.appendChild(el('h3',null,s.name)); t.appendChild(el('div','small muted',(s.btName||'')+(s.lastSync?' · abgerufen '+ageText(s.lastSync):' · noch nicht abgerufen')+(s.demo?' · Beispiel':''))); head.appendChild(t);
+    var t=el('div'); t.appendChild(el('h3',null,s.name)); t.appendChild(el('div','small muted',(s.btName||'')+(s.lastSync?' · abgerufen '+ageText(s.lastSync):' · noch nicht abgerufen')+(isNa(s)&&s.battery!=null?' · Batterie '+s.battery+' %':'')+(isNa(s)&&s.reachable===false?' · nicht erreichbar':'')+(s.demo?' · Beispiel':''))); head.appendChild(t);
     var btns=el('div','row');
-    if(!s.demo){ var sb=el('button','primary',state.busy?'Läuft …':'Abrufen'); sb.type='button'; sb.disabled=state.busy||!btAvailable(); sb.addEventListener('click',function(){ doSync(s); }); btns.appendChild(sb); }
+    if(!s.demo&&!isNa(s)){ var sb=el('button','primary',state.busy?'Läuft …':'Abrufen'); sb.type='button'; sb.disabled=state.busy||!btAvailable(); sb.addEventListener('click',function(){ doSync(s); }); btns.appendChild(sb); }
     head.appendChild(btns); d.appendChild(head);
     if(!s.demo){
       var f=el('div','fields');
       var ln=el('label','f','Raumname'); var inN=el('input'); inN.id='n_'+safeId(s.id); inN.value=s.name; ln.appendChild(inN); f.appendChild(ln);
       var lt=el('label','f','Raumtyp'); var sel=el('select'); sel.id='t_'+safeId(s.id); Object.keys(ROOMTYPES).forEach(function(k){ var o=el('option',null,ROOMTYPES[k].label); o.value=k; if(s.type===k) o.selected=true; sel.appendChild(o); }); lt.appendChild(sel); f.appendChild(lt);
-      var lp=el('label','f','Protokoll'); var sp=el('select'); sp.id='p_'+safeId(s.id); [['auto','automatisch'],['C','TP357 / 358 / 359'],['S','TP357S']].forEach(function(x){ var o=el('option',null,x[1]); o.value=x[0]; if((s.proto||'auto')===x[0]) o.selected=true; sp.appendChild(o); }); lp.appendChild(sp); f.appendChild(lp);
+      var lp=el('label','f','Protokoll'); if(isNa(s)) lp.hidden=true; var sp=el('select'); sp.id='p_'+safeId(s.id); [['auto','automatisch'],['C','TP357 / 358 / 359'],['S','TP357S']].forEach(function(x){ var o=el('option',null,x[1]); o.value=x[0]; if((s.proto||'auto')===x[0]) o.selected=true; sp.appendChild(o); }); lp.appendChild(sp); f.appendChild(lp);
       var lf=el('label','f','Stockwerk'); var sf=el('select'); sf.id='f_'+safeId(s.id); floorNames().forEach(function(nm,ix){ var o=el('option',null,nm); o.value=String(ix); if((s.floor==null?1:s.floor)===ix) o.selected=true; sf.appendChild(o); }); lf.appendChild(sf); f.appendChild(lf);
       var lpo=el('label','f','Position im Stockwerk'); var ip=el('input'); ip.id='o_'+safeId(s.id); ip.type='number'; ip.min='1'; ip.max='9'; ip.value=s.pos||''; ip.placeholder='1 = links'; lpo.appendChild(ip); f.appendChild(lpo);
       d.appendChild(f);
@@ -988,16 +1066,22 @@ function renderSensors(){
       var del=el('div','row'); var rm=el('button',null,'Sensor entfernen'); rm.type='button';
       var confirmBox=el('span','row small'); confirmBox.hidden=true; confirmBox.appendChild(el('span',null,'Alle Messwerte dieses Raums löschen?'));
       var yes=el('button',null,'Ja, löschen'); yes.type='button'; var no=el('button',null,'Abbrechen'); no.type='button'; confirmBox.appendChild(yes); confirmBox.appendChild(no);
-      rm.addEventListener('click',function(){ confirmBox.hidden=false; rm.hidden=true; }); no.addEventListener('click',function(){ confirmBox.hidden=true; rm.hidden=false; });
+      if(!isNa(s)) rm.addEventListener('click',function(){ confirmBox.hidden=false; rm.hidden=true; }); no.addEventListener('click',function(){ confirmBox.hidden=true; rm.hidden=false; });
       yes.addEventListener('click',async function(){ await safe(dbDeleteSensorDays(s.id)); await safe(dbDel('sensors',s.id)); state.sensors=state.sensors.filter(function(x){return x.id!==s.id;}); delete state.series[s.id]; if(state.sel===s.id) state.sel=null; boot2(); });
+      if(isNa(s)){ rm.textContent=s.hidden?'In der Übersicht zeigen':'In der Übersicht ausblenden'; rm.addEventListener('click',function(){ s.hidden=!s.hidden; safe(dbPut('sensors',stripSensor(s))); renderAll(); }); }
       del.appendChild(rm); del.appendChild(confirmBox); d.appendChild(del);
     }
     box.appendChild(d);
   });
 }
+function renderFloorBtns(){
+  var box=$('#floorBtns'); box.textContent=''; var names=floorNames();
+  [2,1,0].forEach(function(f){ var n=state.sensors.filter(function(s){ return !isNa(s)&&!s.demo&&(s.floor==null?1:s.floor)===f; }).length; if(!n) return;
+    var b=el('button',null,names[f]); b.type='button'; b.title='Nur Sensoren im '+names[f]+' abrufen ('+n+')'; b.disabled=state.busy||!btAvailable(); b.addEventListener('click',function(){ syncAll(false,f); }); box.appendChild(b); });
+}
 function safeId(id){ return String(id).replace(/[^a-zA-Z0-9]/g,'_'); }
-function updateButtons(){ $('#btnSyncAll').disabled=state.busy; $('#btnCancel').hidden=!state.busy; $('#btnCloseStatus').hidden=state.busy; if(!state.busy&&$('#status').textContent&&!$('#status').classList.contains('err')){ clearTimeout(statusTimer); statusTimer=setTimeout(function(){ if(!state.busy) $('#statusBar').hidden=true; },12000); } renderSensors(); }
-function renderAll(){ if(!state.sel&&state.sensors.length) state.sel=state.sensors[0].id; $('#demoBanner').hidden=!state.demo; renderRooms(); renderChips(); renderAnalysis(); renderTips(); renderOutdoor(); renderSensors(); }
+function updateButtons(){ $('#btnSyncAll').disabled=state.busy; renderFloorBtns(); $('#btnCancel').hidden=!state.busy; $('#btnCloseStatus').hidden=state.busy; if(!state.busy&&$('#status').textContent&&!$('#status').classList.contains('err')){ clearTimeout(statusTimer); statusTimer=setTimeout(function(){ if(!state.busy) $('#statusBar').hidden=true; },12000); } renderSensors(); }
+function renderAll(){ if(!state.sel&&state.sensors.length) state.sel=state.sensors[0].id; $('#demoBanner').hidden=!state.demo; renderFloorBtns(); renderNaStatus(); renderRooms(); renderChips(); renderAnalysis(); renderTips(); renderOutdoor(); renderSensors(); }
 
 /* --- Diagramm (Canvas) --- */
 var hoverX=null;
@@ -1051,19 +1135,19 @@ function drawChart(){
 /* --- Export / Import --- */
 function saveFile(name,text,type){ var blob=new Blob([text],{type:type}), a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1000); }
 function exportCsv(){
-  var rows=['sensor;raum;zeit;temperatur_c;luftfeuchte_pct;aufloesung'];
-  state.sensors.forEach(function(s){ var S=state.series[s.id]; if(!S) return; for(var i=0;i<S.ts.length;i++) rows.push([s.btName||s.id,s.name,new Date(S.ts[i]).toISOString(),String(S.t[i]).replace('.',','),S.h[i],S.q[i]>=2?'minute':'stunde'].join(';')); });
+  var rows=['sensor;raum;zeit;temperatur_c;luftfeuchte_pct;co2_ppm;aufloesung'];
+  state.sensors.forEach(function(s){ var S=state.series[s.id]; if(!S) return; for(var i=0;i<S.ts.length;i++) rows.push([s.btName||s.id,s.name,new Date(S.ts[i]).toISOString(),String(S.t[i]).replace('.',','),S.h[i],S.c&&S.c[i]?S.c[i]:'',S.q[i]>=2?'minute':'grob'].join(';')); });
   saveFile('raumklima-'+new Date().toISOString().slice(0,10)+'.csv',rows.join('\n'),'text/csv'); setStatus('CSV erstellt ('+(rows.length-1).toLocaleString('de-DE')+' Zeilen).');
 }
 async function exportBackup(){
   if(state.demo){ setStatus('Beispieldaten werden nicht gesichert.'); return; }
   var out={app:'raumklima-logbuch',v:1,created:Date.now(),settings:state.settings,sensors:state.sensors.map(stripSensor),days:[]};
-  for(var i=0;i<state.sensors.length;i++){ var list=(await safe(dbBucketsFor(state.sensors[i].id)))||[]; list.forEach(function(b){ out.days.push({sid:b.sid,day:b.day,t:Array.from(b.t),h:Array.from(b.h),q:Array.from(b.q)}); }); }
+  for(var i=0;i<state.sensors.length;i++){ var list=(await safe(dbBucketsFor(state.sensors[i].id)))||[]; list.forEach(function(b){ out.days.push({sid:b.sid,day:b.day,t:Array.from(b.t),h:Array.from(b.h),q:Array.from(b.q),c:b.c?Array.from(b.c):undefined}); }); }
   saveFile('raumklima-sicherung-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(out),'application/json'); setStatus('Sicherung erstellt.');
 }
 async function importBackup(file){
   try{ var j=JSON.parse(await file.text()); if(j.app!=='raumklima-logbuch') throw new Error('Das ist keine Sicherung dieser App.');
-    var days=j.days.map(function(d){ return {key:d.sid+'|'+d.day,sid:d.sid,day:d.day,t:Int16Array.from(d.t),h:Uint8Array.from(d.h),q:Uint8Array.from(d.q)}; });
+    var days=j.days.map(function(d){ var o={key:d.sid+'|'+d.day,sid:d.sid,day:d.day,t:Int16Array.from(d.t),h:Uint8Array.from(d.h),q:Uint8Array.from(d.q)}; if(d.c) o.c=Uint16Array.from(d.c); return o; });
     for(var i=0;i<j.sensors.length;i++) await dbPut('sensors',j.sensors[i]);
     if(days.length) await dbPutMany('days',days); if(j.settings) await dbPut('meta',Object.assign({},j.settings,{k:'settings'}));
     setStatus('Sicherung geladen: '+j.sensors.length+' Sensoren.'); boot2();
@@ -1071,15 +1155,17 @@ async function importBackup(file){
 }
 
 /* --- Start --- */
-function fillSettings(){ var st=state.settings; var fl=st.floors||DEFAULTS.floors; $('#setF0').value=fl[0]; $('#setF1').value=fl[1]; $('#setF2').value=fl[2]; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
+function renderNaStatus(){ var p=$('#naStatus'); if(!p) return; if(!naConfigured()){ p.textContent='Noch nicht eingerichtet.'; return; }
+  var na=state.na; p.textContent=state.naErr?'Fehler: '+state.naErr:(na?'Zuletzt aktualisiert '+ageText(na.fetched)+': '+na.indoor+' Innenmodul(e)'+(na.outdoor?', Außen':'')+(na.rain?', Regen':'')+(na.wind?', Wind':'')+'.':'Eingerichtet, noch nicht abgerufen.'); p.style.color=state.naErr?'var(--bad)':''; }
+function fillSettings(){ var st=state.settings; $('#setNaUrl').value=st.naUrl||''; $('#setNaKey').value=st.naKey||''; var fl=st.floors||DEFAULTS.floors; $('#setF0').value=fl[0]; $('#setF1').value=fl[1]; $('#setF2').value=fl[2]; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
 async function boot2(){
   await loadAll();
-  state.demo=!state.sensors.length;
+  state.demo=!state.sensors.length&&!naConfigured();
   if(state.demo){ var d=makeDemo(Date.now()); state.sensors=d.sensors; state.series=d.series; }
   if(!state.sel||!state.sensors.find(function(s){return s.id===state.sel;})) state.sel=state.sensors.length?state.sensors[0].id:null;
   fillSettings(); await knownDevices(); renderAll();
   try{ if(navigator.storage&&navigator.storage.persist&&!state.demo) navigator.storage.persist(); }catch(e){}
-  if(!state.demo && state.settings.autoSync && btAvailable()) setTimeout(function(){ syncAll(true); },800);
+  if(!state.demo && state.settings.autoSync) setTimeout(function(){ syncAll(true); },800);
   if(!state.demo){ loadOutdoor().then(function(){ renderOutdoor(); renderTips(); renderAnalysis(); }); }
 }
 document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; renderAnalysis(); renderTips(); }); });
@@ -1091,6 +1177,13 @@ $('#btnCloseStatus').addEventListener('click',function(){ $('#statusBar').hidden
 $('#btnPair').addEventListener('click',function(){ pairNew(false); });
 $('#btnPairAll').addEventListener('click',function(){ pairNew(true); });
 $('#btnCsv').addEventListener('click',exportCsv);
+$('#btnNaSave').addEventListener('click',async function(){ var st=state.settings; st.naUrl=$('#setNaUrl').value.trim(); st.naKey=$('#setNaKey').value.trim();
+  await safe(dbPut('meta',Object.assign({},st,{k:'settings'}))); state.naErr=null;
+  if(!naConfigured()){ renderNaStatus(); setStatus('Netatmo-Einstellungen gelöscht.'); return; }
+  if(state.demo){ state.demo=false; state.sensors=[]; state.series={}; state.sel=null; }
+  setStatus('Teste Netatmo-Verbindung …'); var r=await syncNetatmo(true); renderAll();
+  if(r&&r.error) setStatus('Netatmo: '+r.error,true); else setStatus('Netatmo verbunden. Die Innenmodule stehen jetzt bei den Sensoren und können einem Stockwerk zugeordnet werden.'); });
+$('#btnNaNow').addEventListener('click',async function(){ if(!naConfigured()){ setStatus('Zuerst URL und Schlüssel eintragen.',true); return; } state.naErr=null; setStatus('Rufe Netatmo ab …'); var r=await syncNetatmo(true); renderAll(); if(r&&r.error) setStatus('Netatmo: '+r.error,true); else setStatus('Netatmo aktualisiert.'); });
 $('#btnBackup').addEventListener('click',exportBackup);
 $('#fileImport').addEventListener('change',function(e){ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=''; });
 $('#btnSaveSettings').addEventListener('click',async function(){ var st=state.settings;
