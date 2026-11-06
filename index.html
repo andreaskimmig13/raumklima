@@ -361,7 +361,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-06 19:00</p>
+    <p class="num">App-Version 2026-11-06 19:10</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
   </div>
@@ -894,8 +894,9 @@ async function fetchNetatmo(force){
   if(!naConfigured()||state.demo) return {skipped:true};
   var meta=(await safe(dbGet('meta','netatmo')))||{k:'netatmo'};
   if(!force && meta.fetched && Date.now()-meta.fetched<8*MIN && state.na) return {skipped:true};
-  var wantHist=!meta.histAt || Date.now()-meta.histAt>6*HOUR;
-  var days=wantHist?(meta.histAt?Math.min(14,Math.ceil((Date.now()-meta.histAt)/DAY)+1):14):0;
+  var windMissing=state.na&&state.na.windDiag&&state.na.windDiag.found&&!(state.naWindHist&&state.naWindHist.ts&&state.naWindHist.ts.length);
+  var wantHist=force || windMissing || !meta.histAt || Date.now()-meta.histAt>6*HOUR;
+  var days=wantHist?((force||windMissing||!meta.histAt)?14:Math.min(14,Math.ceil((Date.now()-meta.histAt)/DAY)+1)):0;
   var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+(days?'&days='+days:'');
   var r=await withTimeout(fetch(url,{redirect:'follow'}),45000,'Die Netatmo-Brücke antwortet nicht.');
   var j=await r.json(); if(j.error) throw new Error('Netatmo-Brücke: '+j.error);
@@ -1303,7 +1304,10 @@ async function fetchArchive(force){
   state.archBusy=true; renderNaStatus(); var first=!meta.last;
   try{
     if(first) logLine('Lade Netatmo-Langzeitdaten (einmalig, kann eine Minute dauern) …');
-    var since=meta.last?Math.floor((meta.last-3*DAY)/1000):0;
+    var firsts=Object.keys(state.naDay).filter(function(k){ return hasDaily(k); }).map(function(k){ return state.naDay[k].ts[0]; }), minFirst=firsts.length?Math.min.apply(null,firsts):null;
+    var lagging=minFirst!=null && (!hasDaily('x-wind')&&state.na&&state.na.windDiag&&state.na.windDiag.found || firsts.some(function(f){ return f-minFirst>30*DAY; }));
+    var since=(force||lagging||!meta.last)?0:Math.floor((meta.last-3*DAY)/1000);
+    if(since===0&&meta.last) logLine('Lade Netatmo-Langzeitdaten komplett neu …');
     var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+'&archive='+since;
     var r=await withTimeout(fetch(url,{redirect:'follow'}),300000,'Das Netatmo-Archiv antwortet nicht.'); var j=await r.json(); if(j.error) throw new Error(j.error);
     var last=meta.last||0, keys=meta.keys||[];
@@ -1586,9 +1590,9 @@ function renderNaStatus(){ var p=$('#naStatus'); if(!p) return; if(!naConfigured
   var wd=$('#naWindStatus'); if(wd){ var d=na&&na.windDiag, aw=state.archWindDiag, t;
     if(!na) t=''; else if(!d||!d.found) t='Windmesser: nicht in den Netatmo-Daten enthalten. Ist er derselben Station zugeordnet?';
     else { t='Windmesser: gefunden'+(d.reachable===false?', aber nicht erreichbar':'')+(d.battery!=null?', Akku '+d.battery+' %':'')+(d.ts?', letzter Wert '+ageText(d.ts):', kein aktueller Wert')+(d.strength!=null?' ('+Math.round(d.strength)+' km/h)':'')+'.';
-      t+=' Verlauf: '+(d.hist?d.hist+' Werte':'keine'+(d.histErr?' – '+d.histErr:''))+'.';
-      if(aw) t+=' Tageswerte: '+(aw.rows?aw.rows+' Tage':'keine'+(aw.error?' – '+aw.error:''))+'.'; }
-    wd.textContent=t; wd.style.color=d&&d.found&&d.hist&&(!aw||aw.rows)?'':'var(--warn)'; }
+      var hn=state.naWindHist&&state.naWindHist.ts?state.naWindHist.ts.length:0, dn=hasDaily('x-wind')?state.naDay['x-wind'].ts.length:0;
+      t+=' Gespeichert: '+(hn?hn+' Halbstundenwerte':'kein Kurzzeitverlauf'+(d.histErr?' ('+d.histErr+')':''))+', '+(dn?dn+' Tageswerte seit '+new Date(state.naDay['x-wind'].ts[0]).toLocaleDateString('de-DE'):'keine Tageswerte'+(aw&&aw.error?' ('+aw.error+')':''))+'.'; }
+    var okW=d&&d.found&&state.naWindHist&&state.naWindHist.ts&&state.naWindHist.ts.length&&hasDaily('x-wind'); wd.textContent=t; wd.style.color=okW?'':'var(--warn)'; }
   var a=$('#naArchStatus'); if(!a) return; var keys=Object.keys(state.naDay||{}).filter(function(k){ return hasDaily(k); });
   if(state.archBusy){ a.textContent='Langzeitdaten werden geladen …'; a.style.color=''; return; }
   if(state.archErr){ a.textContent='Langzeitdaten: Fehler – '+state.archErr+(/getmeasure|archive|undefined|Falscher/.test(state.archErr)?'':'')+' Läuft die neue Script-Version unter derselben Web-App-URL?'; a.style.color='var(--bad)'; return; }
