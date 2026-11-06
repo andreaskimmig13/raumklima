@@ -377,6 +377,8 @@ function cRecords(decoded, mode, reqTime){ var out=[], n=decoded.length;
   return out;
 }
 function liveDecode(d){ if(d.length<6||d[0]!==0xc2) return null; var v=d[3]|(d[4]<<8); if(v&0x8000) v-=0x10000; var r={t:v/10,h:d[5]}; return valid(r.t,r.h)?r:null; }
+function advDecode(companyId, payload){ var b=[companyId&0xff,(companyId>>8)&0xff]; for(var i=0;i<payload.length;i++) b.push(payload[i]);
+  if(b.length<4) return null; var v=b[1]|(b[2]<<8); if(v&0x8000) v-=0x10000; var r={t:v/10,h:b[3]}; return (r.t>-30&&r.t<60&&r.h>0&&r.h<=100)?r:null; }
 function valid(t,h){ return isFinite(t)&&t>-40&&t<85&&h>=0&&h<=100; }
 
 /* --- Speicherformat: je Sensor und UTC-Tag ein Eimer mit 1440 Minuten-Plätzen --- */
@@ -605,20 +607,51 @@ async function pickDevice(opts){
   if(o.all) req.acceptAllDevices=true; else if(o.name) req.filters=[{name:o.name}]; else req.filters=[{namePrefix:'TP3'},{namePrefix:'TP'},{namePrefix:'ThermoPro'}];
   return await navigator.bluetooth.requestDevice(req);
 }
+var advCache={}; // id -> {t,h,ts,rssi}
+function listenFor(dev,ms){ // true: Signal gehört, false: nichts gehört, null: Funktion nicht verfügbar
+  return new Promise(function(res){
+    if(!dev.watchAdvertisements){ res(null); return; }
+    var done=false, ac=('AbortController' in window)?new AbortController():null;
+    function finish(v){ if(done) return; done=true; dev.removeEventListener('advertisementreceived',onAdv); try{ ac&&ac.abort(); }catch(e){} try{ if(!ac&&dev.unwatchAdvertisements) dev.unwatchAdvertisements(); }catch(e){} res(v); }
+    function onAdv(ev){ try{ if(ev.manufacturerData) ev.manufacturerData.forEach(function(dv,cid){ var u=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength), r=advDecode(cid,u); if(r) advCache[dev.id]={t:r.t,h:r.h,ts:Date.now(),rssi:ev.rssi}; }); }catch(e){} finish(true); }
+    dev.addEventListener('advertisementreceived',onAdv);
+    Promise.resolve().then(function(){ return dev.watchAdvertisements(ac?{signal:ac.signal}:undefined); }).catch(function(e){ logLine('Lauschen nicht möglich: '+e.message); finish(null); });
+    setTimeout(function(){ finish(false); },ms);
+  });
+}
+function btErrText(e){ var m=(e&&e.message)||String(e); if(/no longer in range|out of range|not in range/i.test(m)) return 'Chrome meldet „außer Reichweite“'; if(/GATT operation failed|Connection attempt failed|unknown reason/i.test(m)) return 'Verbindungsfehler im Bluetooth-Stack'; if(/disconnected/i.test(m)) return 'Verbindung abgebrochen'; return m; }
 async function openConn(dev){
-  logLine('Verbinde mit '+(dev.name||dev.id)+' …');
-  var server=await withTimeout(dev.gatt.connect(),20000,'Verbindung kam nicht zustande. Ist der Sensor in Reichweite?');
-  var notify=null, write=null;
-  logLine('Suche Messkanal …');
-  try{ var s=await withTimeout(server.getPrimaryService(SVC),12000,'Zeitüberschreitung'); notify=await withTimeout(s.getCharacteristic(CH_NOTIFY),8000,'Zeitüberschreitung'); write=await withTimeout(s.getCharacteristic(CH_WRITE),8000,'Zeitüberschreitung'); }
-  catch(e){ logLine('Standarddienst nicht gefunden ('+e.message+'), suche weiter …'); try{ var all=await withTimeout(server.getPrimaryServices(),12000,'Zeitüberschreitung'); for(var i=0;i<all.length&&!notify;i++){ try{ notify=await all[i].getCharacteristic(CH_NOTIFY); write=await all[i].getCharacteristic(CH_WRITE); }catch(_){ notify=null; } } }catch(_){} }
-  if(!notify||!write) throw new Error('Messkanal des Sensors nicht gefunden. Wird er gerade von der ThermoPro-App benutzt?');
-  var conn={dev:dev, server:server, notify:notify, write:write, onPacket:null, live:null};
-  notify.addEventListener('characteristicvaluechanged',function(ev){ var v=ev.target.value, d=new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength));
-    var lv=liveDecode(d); if(lv && d.length<=8) conn.live={t:lv.t,h:lv.h,ts:Date.now()}; if(conn.onPacket) conn.onPacket(d); });
-  await withTimeout(notify.startNotifications(),10000,'Der Sensor nimmt keine Verbindung für Messwerte an. Sensor kurz aus der Reichweite nehmen oder Batterie kurz entnehmen und erneut versuchen.');
-  logLine('Verbunden.');
-  return conn;
+  var lastErr=null;
+  for(var attempt=1;attempt<=3;attempt++){
+    checkCancel();
+    try{
+      logLine('Verbinde mit '+(dev.name||dev.id)+(attempt>1?' (Versuch '+attempt+')':'')+' …');
+      if(!dev.gatt.connected){
+        var heard=await listenFor(dev, attempt===1?8000:12000);
+        if(heard===true) logLine('Signal empfangen'+(advCache[dev.id]&&advCache[dev.id].rssi!=null?' ('+advCache[dev.id].rssi+' dBm)':'')+'.');
+        else if(heard===false) logLine('Kein Funksignal gehört, versuche trotzdem.');
+      }
+      var server=await withTimeout(dev.gatt.connect(),15000,'Zeitüberschreitung beim Verbinden');
+      var notify=null, write=null;
+      logLine('Suche Messkanal …');
+      try{ var sv=await withTimeout(server.getPrimaryService(SVC),12000,'Zeitüberschreitung'); notify=await withTimeout(sv.getCharacteristic(CH_NOTIFY),8000,'Zeitüberschreitung'); write=await withTimeout(sv.getCharacteristic(CH_WRITE),8000,'Zeitüberschreitung'); }
+      catch(e){ logLine('Standarddienst nicht gefunden ('+btErrText(e)+'), suche weiter …'); try{ var all=await withTimeout(server.getPrimaryServices(),12000,'Zeitüberschreitung'); for(var i=0;i<all.length&&!notify;i++){ try{ notify=await all[i].getCharacteristic(CH_NOTIFY); write=await all[i].getCharacteristic(CH_WRITE); }catch(_){ notify=null; } } }catch(_){} }
+      if(!notify||!write) throw new Error('Messkanal des Sensors nicht gefunden. Wird er gerade von der ThermoPro-App benutzt?');
+      var conn={dev:dev, server:server, notify:notify, write:write, onPacket:null, live:null};
+      notify.addEventListener('characteristicvaluechanged',function(ev){ var v=ev.target.value, d=new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength));
+        var lv=liveDecode(d); if(lv && d.length<=8) conn.live={t:lv.t,h:lv.h,ts:Date.now()}; if(conn.onPacket) conn.onPacket(d); });
+      await withTimeout(notify.startNotifications(),10000,'Der Sensor nimmt keine Messwert-Verbindung an');
+      logLine('Verbunden.');
+      return conn;
+    }catch(e){
+      if(state.cancel) throw e;
+      lastErr=e; logLine('Versuch '+attempt+' fehlgeschlagen: '+btErrText(e)+'.');
+      try{ dev.gatt.disconnect(); }catch(_){}
+      if(/Messkanal/.test(e.message)) break;
+      await sleep(1500*attempt);
+    }
+  }
+  throw new Error('Keine Verbindung zu „'+(dev.name||'Sensor')+'“ nach 3 Versuchen ('+btErrText(lastErr)+'). Liegt der Sensor in Reichweite, hilft meist ein weiterer Versuch.');
 }
 async function send(conn,bytes){ var w=conn.write; if(w.properties&&w.properties.writeWithoutResponse&&w.writeValueWithoutResponse) await w.writeValueWithoutResponse(bytes); else await w.writeValue(bytes); }
 function withTimeout(p,ms,msg){ return Promise.race([p,new Promise(function(_,rej){ setTimeout(function(){ rej(new Error(msg)); },ms); })]); }
@@ -682,35 +715,44 @@ async function syncSensor(sensor,dev){
       for(var i=0;i<modes.length;i++){ checkCancel();
         setStatus('„'+sensor.name+'“: Schritt '+(i+1)+' von '+modes.length+' – '+labels[modes[i]]+' …');
         var part=await fetchC(conn,modes[i]); await storeRecords(sensor.id,part); stored+=part.length; renderRooms(); }
-      recs=[]; logLine('Verlauf gespeichert ('+stored+' Werte).');
+      recs=[]; logLine('Verlauf gespeichert.');
     }
-    if(live){ recs.push({ts:Math.floor(live.ts/MIN)*MIN,t:live.t,h:live.h,q:2}); sensor.live=live; }
+    if(live){ recs.push({ts:Math.floor(live.ts/MIN)*MIN,t:live.t,h:live.h,q:2}); sensor.live=live;
+      var ad=advCache[dev.id]; if(ad&&Math.abs(ad.ts-live.ts)<5*MIN){ var match=Math.abs(ad.t-live.t)<=0.3&&Math.abs(ad.h-live.h)<=2; if(match!==!!sensor.advOk) logLine(match?'Funksignal enthält die Messwerte – kann als Notlösung genutzt werden.':'Funksignal passt nicht zu den Messwerten, wird nicht verwendet.'); sensor.advOk=match; } }
     if(recs.length) await storeRecords(sensor.id,recs);
     try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}
     sensor.lastSync=Date.now(); sensor.btName=dev.name||sensor.btName; await dbPut('sensors',stripSensor(sensor));
-    var total=(state.series[sensor.id]||{ts:[]}).ts.length; logLine('Fertig. Im Speicher: '+total+' Werte.');
+    var total=(state.series[sensor.id]||{ts:[]}).ts.length; logLine('Fertig. Im Speicher: '+total.toLocaleString('de-DE')+' Minutenplätze.');
     return total;
   } finally { conn.onPacket=null; try{ dev.gatt.disconnect(); }catch(e){} progress(null); }
 }
-function stripSensor(s){ return {id:s.id,name:s.name,type:s.type,floor:s.floor==null?1:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
+function stripSensor(s){ return {advOk:!!s.advOk,id:s.id,name:s.name,type:s.type,floor:s.floor==null?1:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
 
 async function doSync(sensor){
   if(state.busy) return; if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
   state.cancel=false; state.busy=true; updateButtons();
+  var dev=null;
   try{
     await knownDevices();
-    var dev=state.devices.get(sensor.id);
+    dev=state.devices.get(sensor.id);
     if(!dev){ setStatus('Bitte „'+sensor.name+'“ in der Liste auswählen …'); dev=await pickDevice({name:sensor.btName}); if(dev.id!==sensor.id) await rekey(sensor,dev.id); }
     setStatus('Rufe „'+sensor.name+'“ ab …');
     var n=await syncSensor(sensor,dev);
     setStatus('„'+sensor.name+'“ abgerufen, Verlauf gespeichert.');
-  }catch(e){ handleBtError(e); }
+  }catch(e){ if(dev&&!state.cancel&&await safe(advFallback(sensor,dev))){ setStatus('Verlauf von „'+sensor.name+'“ ging nicht, der aktuelle Wert wurde aus dem Funksignal übernommen. Später erneut versuchen.',true); } else handleBtError(e); }
   finally{ state.busy=false; updateButtons(); renderAll(); }
 }
 async function rekey(sensor,newId){ var old=sensor.id, S=state.series[old];
   var list=(await dbBucketsFor(old))||[]; await dbDeleteSensorDays(old); await dbDel('sensors',old);
   sensor.id=newId; list.forEach(function(b){ b.sid=newId; b.key=newId+'|'+b.day; }); if(list.length) await dbPutMany('days',list);
   delete state.series[old]; state.series[newId]=S||{ts:[],t:[],h:[],q:[]}; if(state.sel===old) state.sel=newId; await dbPut('sensors',stripSensor(sensor)); }
+async function advFallback(sensor,dev){
+  if(!sensor.advOk) return false; var ad=advCache[dev.id];
+  if(!ad||Date.now()-ad.ts>3*MIN){ await listenFor(dev,6000); ad=advCache[dev.id]; }
+  if(!ad||Date.now()-ad.ts>3*MIN) return false;
+  sensor.live={t:ad.t,h:ad.h,ts:ad.ts}; await storeRecords(sensor.id,[{ts:Math.floor(ad.ts/MIN)*MIN,t:ad.t,h:ad.h,q:2}]); await safe(dbPut('sensors',stripSensor(sensor)));
+  logLine('Aktueller Wert von „'+sensor.name+'“ aus dem Funksignal übernommen (ohne Verlauf).'); return true;
+}
 async function syncAll(auto){
   if(state.busy) return;
   if(state.demo||!state.sensors.length){ showTab('einstellungen'); setStatus('Koppel zuerst einen Sensor.'); return; }
@@ -719,16 +761,21 @@ async function syncAll(auto){
   var list=state.sensors.filter(function(s){ return !auto || (state.devices.has(s.id) && (!s.lastSync || Date.now()-s.lastSync>state.settings.autoAfterH*HOUR)); });
   if(auto&&!list.length){ renderSensors(); return; }
   state.cancel=false; state.busy=true; updateButtons();
-  var ok=0, miss=[];
+  var ok=0, miss=[], failed=[], partial=[];
   for(var i=0;i<list.length;i++){ var s=list[i], dev=state.devices.get(s.id);
     if(state.cancel) break;
     if(!dev){ miss.push(s.name); continue; }
-    try{ setStatus((auto?'Automatischer Abruf: ':'Rufe ')+'„'+s.name+'“'+(auto?'':' ab')+' ('+(i+1)+'/'+list.length+') …'); await syncSensor(s,dev); ok++; }
-    catch(e){ logLine('Fehler bei '+s.name+': '+e.message); miss.push(s.name); }
+    try{ setStatus((auto?'Automatischer Abruf: ':'Rufe ')+'„'+s.name+'“'+(auto?'':' ab')+' ('+(i+1)+'/'+list.length+') …'); await syncSensor(s,dev); ok++; renderRooms(); }
+    catch(e){ if(state.cancel) break; logLine('Fehler bei '+s.name+': '+e.message); failed.push(s); }
+    await sleep(1200);
   }
+  // zweite Runde für fehlgeschlagene Sensoren
+  for(var j=0;j<failed.length && !state.cancel;j++){ var fs=failed[j], fd=state.devices.get(fs.id);
+    try{ setStatus('Zweiter Anlauf: „'+fs.name+'“ ('+(j+1)+'/'+failed.length+') …'); await sleep(2000); await syncSensor(fs,fd); ok++; renderRooms(); }
+    catch(e){ logLine('Wieder fehlgeschlagen: '+fs.name+' – '+e.message); if(await safe(advFallback(fs,fd))) partial.push(fs.name); else miss.push(fs.name); } }
   state.busy=false; updateButtons(); renderAll();
-  if(miss.length && !ok && !state.devices.size) setStatus('Dein Browser merkt sich Sensoren nicht. Tippe beim jeweiligen Sensor auf „Abrufen“ und wähle ihn aus.',true);
-  else setStatus(ok+' von '+list.length+' Sensoren abgerufen.'+(miss.length?' Nicht erreicht: '+miss.join(', ')+'. Dort einzeln auf „Abrufen“ tippen.':''),!!miss.length);
+  if(miss.length && !ok && !partial.length && !state.devices.size) setStatus('Dein Browser merkt sich Sensoren nicht. Tippe beim jeweiligen Sensor auf „Abrufen“ und wähle ihn aus.',true);
+  else setStatus(ok+' von '+list.length+' Sensoren abgerufen.'+(partial.length?' Nur aktueller Wert: '+partial.join(', ')+'.':'')+(miss.length?' Nicht erreicht: '+miss.join(', ')+'. Später erneut versuchen oder beim Sensor auf „Abrufen“ tippen.':''),!!miss.length);
 }
 async function pairNew(all){
   if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
