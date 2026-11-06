@@ -197,6 +197,7 @@ footer{font-size:.82rem;color:var(--muted)}
   <section id="secSensors">
     <div class="sechead"><h2>Sensoren</h2></div>
     <div id="btNote" class="banner info" hidden></div>
+    <div id="memNote" class="small muted" hidden></div>
     <div id="pairBox" class="row">
       <button type="button" id="btnPair" class="primary">Neuen Sensor koppeln</button>
       <button type="button" id="btnPairAll">Alle Bluetooth-Geräte zeigen</button>
@@ -210,6 +211,8 @@ footer{font-size:.82rem;color:var(--muted)}
         <label class="f">Feuchte-Schwelle Wohnräume (%)<input id="setThr" type="number" min="40" max="90" step="1"></label>
         <label class="f">Feuchte-Schwelle Bad (%)<input id="setThrBath" type="number" min="40" max="95" step="1"></label>
         <label class="f">Feuchtephase ab (Minuten)<input id="setMinPhase" type="number" min="10" max="600" step="5"></label>
+        <label class="f">Automatisch abrufen beim Öffnen<select id="setAuto"><option value="1">ja</option><option value="0">nein</option></select></label>
+        <label class="f">… wenn letzter Abruf älter als (Stunden)<input id="setAutoH" type="number" min="0" max="72" step="1"></label>
         <label class="f">Wohnort für Außenwetter<input id="setPlace" type="text" placeholder="z. B. Freiburg"></label>
         <label class="f">Breitengrad (optional)<input id="setLat" type="number" step="0.01"></label>
         <label class="f">Längengrad (optional)<input id="setLon" type="number" step="0.01"></label>
@@ -486,7 +489,7 @@ function makeDemo(now){
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
 var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map()};
-var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null};
+var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 var statusTimer=null;
@@ -619,6 +622,7 @@ async function syncSensor(sensor,dev){
     }
     if(live){ recs.push({ts:Math.floor(live.ts/MIN)*MIN,t:live.t,h:live.h,q:2}); sensor.live=live; }
     if(recs.length) await storeRecords(sensor.id,recs);
+    try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}
     sensor.lastSync=Date.now(); sensor.btName=dev.name||sensor.btName; await dbPut('sensors',stripSensor(sensor));
     var total=(state.series[sensor.id]||{ts:[]}).ts.length; logLine('Fertig. Im Speicher: '+total+' Werte.');
     return total;
@@ -643,26 +647,32 @@ async function rekey(sensor,newId){ var old=sensor.id, S=state.series[old];
   var list=(await dbBucketsFor(old))||[]; await dbDeleteSensorDays(old); await dbDel('sensors',old);
   sensor.id=newId; list.forEach(function(b){ b.sid=newId; b.key=newId+'|'+b.day; }); if(list.length) await dbPutMany('days',list);
   delete state.series[old]; state.series[newId]=S||{ts:[],t:[],h:[],q:[]}; if(state.sel===old) state.sel=newId; await dbPut('sensors',stripSensor(sensor)); }
-async function syncAll(){
+async function syncAll(auto){
+  if(state.busy) return;
   if(state.demo||!state.sensors.length){ $('#secSensors').scrollIntoView({behavior:'smooth'}); setStatus('Koppel zuerst einen Sensor.'); return; }
   if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
-  state.cancel=false; state.busy=true; updateButtons(); await knownDevices();
+  await knownDevices();
+  var list=state.sensors.filter(function(s){ return !auto || (state.devices.has(s.id) && (!s.lastSync || Date.now()-s.lastSync>state.settings.autoAfterH*HOUR)); });
+  if(auto&&!list.length){ renderSensors(); return; }
+  state.cancel=false; state.busy=true; updateButtons();
   var ok=0, miss=[];
-  for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i], dev=state.devices.get(s.id);
+  for(var i=0;i<list.length;i++){ var s=list[i], dev=state.devices.get(s.id);
+    if(state.cancel) break;
     if(!dev){ miss.push(s.name); continue; }
-    try{ setStatus('Rufe „'+s.name+'“ ab ('+(i+1)+'/'+state.sensors.length+') …'); await syncSensor(s,dev); ok++; }
+    try{ setStatus((auto?'Automatischer Abruf: ':'Rufe ')+'„'+s.name+'“'+(auto?'':' ab')+' ('+(i+1)+'/'+list.length+') …'); await syncSensor(s,dev); ok++; }
     catch(e){ logLine('Fehler bei '+s.name+': '+e.message); miss.push(s.name); }
   }
   state.busy=false; updateButtons(); renderAll();
   if(miss.length && !ok && !state.devices.size) setStatus('Dein Browser merkt sich Sensoren nicht. Tippe beim jeweiligen Sensor auf „Abrufen“ und wähle ihn aus.',true);
-  else setStatus(ok+' von '+state.sensors.length+' Sensoren abgerufen.'+(miss.length?' Nicht erreicht: '+miss.join(', ')+'. Dort einzeln auf „Abrufen“ tippen.':''),!!miss.length);
+  else setStatus(ok+' von '+list.length+' Sensoren abgerufen.'+(miss.length?' Nicht erreicht: '+miss.join(', ')+'. Dort einzeln auf „Abrufen“ tippen.':''),!!miss.length);
 }
 async function pairNew(all){
   if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
   try{
     var dev=await pickDevice({all:all});
     var ex=state.sensors.find(function(s){ return s.id===dev.id; });
-    if(ex){ setStatus('„'+ex.name+'“ ist schon gekoppelt.'); return doSync(ex); }
+    if(!ex&&dev.name) { ex=state.sensors.find(function(s){ return !s.demo&&s.btName===dev.name; }); if(ex){ await rekey(ex,dev.id); await knownDevices(); setStatus('„'+ex.name+'“ neu verknüpft, die Messwerte sind erhalten.'); } }
+    if(ex){ if(!state.busy) setStatus('„'+ex.name+'“ ist gekoppelt. Rufe ab …'); return doSync(ex); }
     if(state.demo){ state.demo=false; state.sensors=[]; state.series={}; state.sel=null; }
     var s={id:dev.id,name:roomGuess(),type:'wohn',proto:'auto',btName:dev.name||'Sensor',created:Date.now()};
     state.sensors.push(s); state.series[s.id]={ts:[],t:[],h:[],q:[]}; state.sel=s.id;
@@ -806,6 +816,10 @@ function renderSensors(){
   var note=$('#btNote');
   if(!btAvailable()){ note.hidden=false; note.textContent='Bluetooth ist in diesem Browser bzw. in dieser Vorschau nicht verfügbar. Öffne die App über ihre https-Adresse in Chrome auf Android oder am PC.'; }
   else note.hidden=true;
+  var mem=$('#memNote'), real=state.sensors.filter(function(x){return !x.demo;});
+  if(btAvailable()&&real.length){ var k=real.filter(function(x){ return state.devices.has(x.id); }).length; mem.hidden=false;
+    mem.textContent=k===real.length?(k===1?'Chrome merkt sich den Sensor':'Chrome merkt sich alle '+k+' Sensoren')+' – „Alle Sensoren abrufen“ und der automatische Abruf funktionieren ohne Auswahl.':(k? 'Chrome merkt sich '+k+' von '+real.length+' Sensoren. Die übrigen einmal über „Neuen Sensor koppeln“ erneut auswählen, Messwerte bleiben erhalten.':'Chrome merkt sich die Sensoren noch nicht. Ist das Flag aktiv, die Sensoren einmal über „Neuen Sensor koppeln“ erneut auswählen – die Messwerte bleiben erhalten.'); }
+  else mem.hidden=true;
   $('#btnPair').disabled=!btAvailable()||state.busy; $('#btnPairAll').disabled=!btAvailable()||state.busy;
   state.sensors.forEach(function(s){
     var d=el('div','sensor'); var head=el('div','row'); head.style.justifyContent='space-between';
@@ -907,17 +921,19 @@ async function importBackup(file){
 }
 
 /* --- Start --- */
-function fillSettings(){ var st=state.settings; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
+function fillSettings(){ var st=state.settings; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
 async function boot2(){
   await loadAll();
   state.demo=!state.sensors.length;
   if(state.demo){ var d=makeDemo(Date.now()); state.sensors=d.sensors; state.series=d.series; }
   if(!state.sel||!state.sensors.find(function(s){return s.id===state.sel;})) state.sel=state.sensors.length?state.sensors[0].id:null;
-  fillSettings(); renderAll();
+  fillSettings(); await knownDevices(); renderAll();
+  try{ if(navigator.storage&&navigator.storage.persist&&!state.demo) navigator.storage.persist(); }catch(e){}
+  if(!state.demo && state.settings.autoSync && btAvailable()) setTimeout(function(){ syncAll(true); },800);
   if(!state.demo){ loadOutdoor().then(function(){ renderOutdoor(); renderTips(); renderAnalysis(); }); }
 }
 document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; renderAnalysis(); renderTips(); }); });
-$('#btnSyncAll').addEventListener('click',syncAll);
+$('#btnSyncAll').addEventListener('click',function(){ syncAll(false); });
 $('#btnCancel').addEventListener('click',function(){ state.cancel=true; setStatus('Breche ab …'); });
 $('#btnCloseStatus').addEventListener('click',function(){ $('#statusBar').hidden=true; });
 $('#btnPair').addEventListener('click',function(){ pairNew(false); });
@@ -926,7 +942,7 @@ $('#btnCsv').addEventListener('click',exportCsv);
 $('#btnBackup').addEventListener('click',exportBackup);
 $('#fileImport').addEventListener('change',function(e){ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=''; });
 $('#btnSaveSettings').addEventListener('click',async function(){ var st=state.settings;
-  st.thr=clamp(+$('#setThr').value,40,90,62); st.thrBath=clamp(+$('#setThrBath').value,40,95,70); st.minPhase=clamp(+$('#setMinPhase').value,10,600,60);
+  st.thr=clamp(+$('#setThr').value,40,90,62); st.thrBath=clamp(+$('#setThrBath').value,40,95,70); st.minPhase=clamp(+$('#setMinPhase').value,10,600,60); st.autoSync=$('#setAuto').value==='1'; st.autoAfterH=clamp(+$('#setAutoH').value,0,72,3);
   var newPlace=$('#setPlace').value.trim(), latIn=$('#setLat').value.trim(), lonIn=$('#setLon').value.trim(), placeChanged=newPlace!==(st.place||'');
   st.place=newPlace;
   if(latIn!==''&&lonIn!==''&&!placeChanged){ st.lat=clamp(+latIn,-90,90,st.lat); st.lon=clamp(+lonIn,-180,180,st.lon); }
