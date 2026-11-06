@@ -101,6 +101,7 @@ canvas{display:block;width:100%;height:300px;touch-action:pan-y}
 .airl{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 180px}
 .airn{font-weight:600}
 .airp{display:flex;flex-wrap:wrap;gap:4px}
+.pill.stale{background:transparent;border:1px solid currentColor}
 .airr{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:0 0 auto}
 .airtip{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px}
 .airtip p{margin:0}
@@ -167,6 +168,9 @@ body{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .cell .cc{font-size:.74rem;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 .cell .cc.mid{color:var(--warn)} .cell .cc.hi{color:var(--bad)}
 .cell .age{font-size:.68rem;color:var(--muted)}
+.cell .agebadge{align-self:flex-start;margin-top:3px;font-size:.66rem;font-weight:700;padding:1px 6px;border-radius:99px}
+.agebadge.warn{background:var(--warn-bg);color:var(--warn)} .agebadge.bad{background:var(--bad-bg);color:var(--bad)}
+.cell.stale-bad .ct,.cell.stale-bad .ch,.cell.stale-bad .aq{opacity:.5}
 .cell .sd{position:absolute;top:8px;right:7px;width:8px;height:8px;border-radius:50%}
 .sd.ok,.dot.ok{background:var(--ok)} .sd.warn,.dot.warn{background:var(--warn)} .sd.bad,.dot.bad{background:var(--bad)}
 .cell.bath{background:var(--bath-bg)}
@@ -939,9 +943,9 @@ function currentOf(s){ var S=state.series[s.id], L=S&&S.ts.length?S.ts.length-1:
 function ageText(ts){ var m=Math.round((Date.now()-ts)/MIN); if(m<2) return 'gerade eben'; if(m<60) return 'vor '+m+' min'; var h=Math.round(m/60); if(h<36) return 'vor '+h+' h'; return 'vor '+Math.round(h/24)+' Tagen'; }
 function thrFor(s){ return s.type==='bad'?state.settings.thrBath:state.settings.thr; }
 function floorNames(){ var f=(state.settings&&state.settings.floors)||DEFAULTS.floors; return [f[0],f[1],f[2]]; }
+function dataAge(s,c){ if(!c||s.demo) return null; var a=Date.now()-c.ts; if(a>=DAY) return {cls:'bad',txt:'Stand '+ageText(c.ts)}; if(a>=3*HOUR) return {cls:'warn',txt:'Stand '+ageText(c.ts)}; return null; }
 function roomStatus(s,c){
   if(!c) return {cls:'warn',txt:'keine Daten'};
-  if(!s.demo&&Date.now()-c.ts>2*DAY) return {cls:'warn',txt:'Stand '+ageText(c.ts)};
   if(c.h>=thrFor(s)) return {cls:'bad',txt:'zu feucht – lüften'};
   if(c.co2&&c.co2>=1400) return {cls:'bad',txt:'CO₂ hoch – lüften'};
   if(c.co2&&c.co2>=1000) return {cls:'warn',txt:'CO₂ erhöht'};
@@ -1008,13 +1012,14 @@ function weatherStrip(){
   return box;
 }
 function cellFor(s){
-  var c=currentOf(s), st=roomStatus(s,c), b=el('button','cell'+(s.type==='bad'?' bath':'')); b.type='button';
+  var c=currentOf(s), st=roomStatus(s,c), age=dataAge(s,c), b=el('button','cell'+(s.type==='bad'?' bath':'')+(age?' stale-'+age.cls:'')); b.type='button';
   b.setAttribute('aria-label',s.name+': '+(c?fmt1(c.t)+' Grad, '+c.h+' Prozent, ':'')+st.txt);
   b.appendChild(el('span','cn',s.name)); b.appendChild(el('span','sd '+st.cls));
   b.appendChild(el('span','ct',c?fmt1(c.t)+' °C':'–'));
   b.appendChild(el('span','ch'+(c&&c.h>=thrFor(s)?' hi':''),c?c.h+' %':'–'));
   if(c&&c.co2){ var aq=airQuality(c.co2), aqEl=el('span','aq '+aq.cls); aqEl.appendChild(el('b',null,aq.txt)); aqEl.appendChild(el('span',null,Math.round(c.co2).toLocaleString('de-DE')+' ppm')); b.appendChild(aqEl); b.classList.add('hasaq'); }
   if(st.cls!=='ok' && !(c&&c.co2&&/CO₂/.test(st.txt))) b.appendChild(el('span','age',st.txt));
+  if(age) b.appendChild(el('span','agebadge '+age.cls,age.txt.replace('Stand ','')));
   b.addEventListener('click',function(){ state.sel=s.id; showTab('verlauf'); });
   return b;
 }
@@ -1075,9 +1080,12 @@ function airingNeed(s,ahOut){
       else if(last) info='zuletzt gelüftet '+ageText(last.from);
     }
   }
-  if(now-c.ts>6*HOUR) info=(info?info+' · ':'')+'Werte '+ageText(c.ts);
+  var ag=dataAge(s,c); if(ag) reasons.push({cls:ag.cls,txt:ag.txt,stale:true});
   var eff=null;
-  if(ahOut!=null){ var diff=absHum(c.t,c.h)-ahOut; eff=diff>1.5?{cls:'ok',txt:'senkt die Feuchte'}:(diff>0.3?{cls:'warn',txt:'bringt bei Feuchte wenig'}:{cls:'bad',txt:'erhöht die Feuchte'}); }
+  if(ahOut!=null){ var diff=absHum(c.t,c.h)-ahOut, humid=c.h>=thrFor(s), dry=c.h<40;
+    if(diff>1.5) eff=dry?{cls:'warn',txt:'macht die Luft trockener'}:{cls:'ok',txt:'senkt die Feuchte'};
+    else if(diff>0.3) eff=humid?{cls:'warn',txt:'senkt die Feuchte kaum'}:{cls:'ok',txt:'Feuchte bleibt etwa gleich'};
+    else eff=humid?{cls:'bad',txt:'erhöht die Feuchte'}:(dry?{cls:'ok',txt:'befeuchtet die trockene Luft'}:{cls:'warn',txt:'erhöht die Feuchte etwas'}); }
   return {s:s,reasons:reasons,score:score,info:info,eff:eff};
 }
 function renderOutdoor(){
@@ -1091,7 +1099,7 @@ function renderOutdoor(){
   if(rows.length){ var list=el('div','list airlist');
     rows.forEach(function(r){ var li=el('div','li airrow'+(r.score>=3?' urgent':(r.score>0?' due':'')));
       var left=el('div','airl'); left.appendChild(el('span','airn',r.s.name));
-      var pills=el('div','airp'); if(r.reasons.length) r.reasons.forEach(function(x){ pills.appendChild(el('span','pill '+x.cls,x.txt)); }); else pills.appendChild(el('span','pill ok','alles gut'));
+      var pills=el('div','airp'); r.reasons.forEach(function(x){ pills.appendChild(el('span','pill '+x.cls+(x.stale?' stale':''),x.txt)); }); if(!r.reasons.filter(function(x){return !x.stale||x.cls==='bad';}).length) pills.insertBefore(el('span','pill ok','alles gut'),pills.firstChild);
       left.appendChild(pills); if(r.info) left.appendChild(el('span','small muted',r.info)); li.appendChild(left);
       if(r.eff&&r.score>0){ var rr=el('div','airr'); rr.appendChild(el('span','small muted','Lüften jetzt')); rr.appendChild(el('span','pill '+r.eff.cls,r.eff.txt)); li.appendChild(rr); }
       list.appendChild(li); });
@@ -1103,7 +1111,7 @@ function renderOutdoor(){
   tip.appendChild(el('p','small',on.t<16?'Etwa '+dur+' Fenster ganz öffnen, am besten quer durchs Haus. Heizkörper dabei zudrehen, danach wieder auf.':'Bei dieser Außentemperatur darf länger gelüftet werden, etwa '+dur+'.'));
   if(raining||stormy){ var wp=el('p','small'); wp.appendChild(el('span','pill '+(stormy?'bad':'warn'),stormy?'Starker Wind':'Es regnet'));
     wp.appendChild(document.createTextNode(' '+(stormy?'Fenster nicht gekippt oder unbeaufsichtigt offen lassen. Kurz stoßlüften geht, am besten auf der windabgewandten Seite.':'Kurz stoßlüften ist trotzdem sinnvoll, Regen macht die Luft im Haus kaum feuchter. Fenster aber nicht gekippt lassen.'))); tip.appendChild(wp); }
-  tip.appendChild(el('p','small muted','„Senkt die Feuchte“ heißt: Die Außenluft enthält weniger Wasser als die Raumluft (draußen '+fmt1(ahOut)+' g/m³). Kalte Luft ist fast immer trockener. Im Sommer kann feuchtwarme Luft kühle Räume wie den Keller dagegen feuchter machen.'));
+  tip.appendChild(el('p','small muted','Verglichen wird, wie viel Wasser die Luft draußen ('+fmt1(ahOut)+' g/m³) und im Raum enthält. Grün heißt: Lüften wirkt gerade in die richtige Richtung. Bei feuchten Räumen ist trockenere Außenluft gut, bei sehr trockenen Räumen unter 40 % ist feuchtere Außenluft willkommen.'));
   p.appendChild(tip);
 }
 function renderSensors(){
