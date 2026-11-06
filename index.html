@@ -18,6 +18,7 @@
   --ok:#2c7a4c; --warn:#a86a12; --bad:#b03c2a;
   --ok-bg:#e3f2e9; --warn-bg:#fbefdc; --bad-bg:#fbe4df;
   --btn-ink:#ffffff;
+  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
   --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
@@ -25,12 +26,12 @@
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; color-scheme:dark}}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; color-scheme:dark}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 48px}
@@ -125,6 +126,42 @@ details.more .tip{margin-top:8px}
 .statusbar .status{color:var(--ink);font-size:.92rem}
 #btnCloseStatus{min-width:42px;padding:6px 10px;font-size:1.2rem;line-height:1}
 body{padding-bottom:120px}
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:15;display:flex;gap:4px;background:var(--bg);padding-block:6px;margin-top:-14px}
+.tabs button{flex:1 1 auto;min-width:0;min-height:40px;padding:6px 6px;font-size:.8rem;border-radius:8px;background:var(--surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:16;background:var(--bg)}
+.pane{display:flex;flex-direction:column;gap:28px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:-14px}
+.chips button{min-height:36px;padding:6px 12px;border-radius:99px;white-space:nowrap;font-size:.88rem;flex:0 0 auto}
+.chips button[aria-pressed="true"]{background:var(--hum);border-color:var(--hum);color:var(--btn-ink)}
+.chips button.bath{border-color:var(--bath-line)}
+/* Hausquerschnitt */
+.house{display:flex;flex-direction:column;align-items:stretch;max-width:560px;width:100%;margin:0 auto}
+.roof{position:relative;height:64px;margin:0 -10px}
+.roof::before{content:"";position:absolute;inset:0;background:var(--wall);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.roof::after{content:"";position:absolute;inset:3px 6px 0;background:var(--roof);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.chimney{position:absolute;right:22%;top:10px;width:18px;height:30px;background:var(--wall);z-index:0}
+.floor{border:3px solid var(--wall);border-top-width:0;background:var(--wall);display:flex;flex-direction:column}
+.floor:first-of-type{border-top-width:3px}
+.flabel{background:var(--surface);font-family:var(--display);font-stretch:85%;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:4px 8px 0}
+.fgrid{display:grid;gap:3px;background:var(--wall)}
+.cell{background:var(--surface);border:0;border-radius:0;padding:6px 7px 8px;min-height:78px;display:flex;flex-direction:column;gap:2px;text-align:left;font-weight:400;position:relative;min-width:0;color:var(--ink)}
+.cell .cn{font-size:.72rem;font-weight:600;line-height:1.2;padding-right:12px;overflow-wrap:anywhere;hyphens:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cell .ct{font-family:var(--display);font-weight:700;font-size:1.05rem;color:var(--temp);font-variant-numeric:tabular-nums;line-height:1.1}
+.cell .ch{font-family:var(--display);font-weight:700;font-size:1.05rem;color:var(--hum);font-variant-numeric:tabular-nums;line-height:1.1}
+.cell .ch.hi{color:var(--bad)}
+.cell .age{font-size:.68rem;color:var(--muted)}
+.cell .sd{position:absolute;top:8px;right:7px;width:8px;height:8px;border-radius:50%}
+.sd.ok,.dot.ok{background:var(--ok)} .sd.warn,.dot.warn{background:var(--warn)} .sd.bad,.dot.bad{background:var(--bad)}
+.cell.bath{background:var(--bath-bg)}
+.cell.bath .cn{color:var(--bath-ink)}
+.cell.empty{background:var(--bg);background-image:repeating-linear-gradient(135deg,transparent 0 6px,var(--line) 6px 7px);cursor:default}
+.cell.none{color:var(--muted);font-size:.78rem;justify-content:center}
+.ground{height:10px;background:var(--wall);margin:0 -14px;border-radius:2px}
+.groundinfo{display:flex;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--muted);padding-top:6px;flex-wrap:wrap}
+.legend i.dot{width:8px;height:8px;border-radius:50%}
+.legend i.sw{width:14px;height:10px;border-radius:2px}
+.sw.bath{background:var(--bath-bg);outline:1px solid var(--bath-line)}
 footer{font-size:.82rem;color:var(--muted)}
 </style>
 
@@ -142,14 +179,33 @@ footer{font-size:.82rem;color:var(--muted)}
   </header>
 
   <div id="demoBanner" class="banner demo" hidden>
-    <strong>Beispieldaten.</strong> Drei erfundene Räume über 14 Tage, damit du siehst, wie die Auswertung aussieht. Sobald du unten einen echten Sensor koppelst, verschwinden sie.
+    <strong>Beispieldaten.</strong> Drei erfundene Räume über 14 Tage, damit du siehst, wie die Auswertung aussieht. Sobald du unter „Einstellungen“ einen echten Sensor koppelst, verschwinden sie.
   </div>
 
+  <nav class="tabs" role="tablist" aria-label="Bereiche">
+    <button type="button" role="tab" data-tab="uebersicht">Übersicht</button>
+    <button type="button" role="tab" data-tab="verlauf">Verlauf</button>
+    <button type="button" role="tab" data-tab="empfehlungen">Empfehlungen</button>
+    <button type="button" role="tab" data-tab="einstellungen">Einstellungen</button>
+  </nav>
+
+  <div class="pane" data-pane="uebersicht">
   <section id="secNow">
-    <div class="sechead"><h2>Jetzt</h2><span class="small muted" id="nowHint"></span></div>
-    <div class="rooms" id="rooms"></div>
+    <div class="sechead"><h2>Jetzt im Haus</h2><span class="small muted" id="nowHint"></span></div>
+    <div class="house" id="house"></div>
+    <div class="legend" id="houseLegend">
+      <span><i class="dot ok"></i>gut</span><span><i class="dot warn"></i>kühl / trocken / alt</span><span><i class="dot bad"></i>zu feucht</span><span><i class="sw bath"></i>Bad</span>
+    </div>
   </section>
 
+  <section id="secOut">
+    <div class="sechead"><h2>Draußen &amp; Lüften jetzt</h2><span class="small muted" id="outHint"></span></div>
+    <div class="panel" id="outPanel"></div>
+  </section>
+  </div>
+
+  <div class="pane" data-pane="verlauf" hidden>
+  <div class="chips" id="roomChips" role="group" aria-label="Raum wählen"></div>
   <section id="secHist">
     <div class="sechead">
       <h2 id="histTitle">Verlauf</h2>
@@ -175,7 +231,9 @@ footer{font-size:.82rem;color:var(--muted)}
       </div>
     </div>
   </section>
+  </div>
 
+  <div class="pane" data-pane="empfehlungen" hidden>
   <section id="secCmp">
     <div class="sechead"><h2>Räume im Vergleich</h2><span class="small muted" id="cmpHint"></span></div>
     <div class="tablewrap"><table class="cmp">
@@ -189,11 +247,9 @@ footer{font-size:.82rem;color:var(--muted)}
     <div class="tips" id="tips"></div>
   </section>
 
-  <section id="secOut">
-    <div class="sechead"><h2>Draußen &amp; Lüften jetzt</h2><span class="small muted" id="outHint"></span></div>
-    <div class="panel" id="outPanel"></div>
-  </section>
+  </div>
 
+  <div class="pane" data-pane="einstellungen" hidden>
   <section id="secSensors">
     <div class="sechead"><h2>Sensoren</h2></div>
     <div id="btNote" class="banner info" hidden></div>
@@ -205,9 +261,12 @@ footer{font-size:.82rem;color:var(--muted)}
     <p class="small muted" style="margin:0">Mehrere Sensoren einzeln koppeln und den Raum sofort benennen: In der Auswahlliste heißen alle ähnlich, nur die vier Zeichen in Klammern unterscheiden sich. Zur Kontrolle nach dem Koppeln den angezeigten Wert mit dem Display des Sensors vergleichen.</p>
     <div id="sensorList" style="display:flex;flex-direction:column;gap:10px"></div>
 
-    <details id="settingsBox">
-      <summary>Einstellungen</summary>
+    <details id="settingsBox" open>
+      <summary>Allgemeine Einstellungen</summary>
       <div class="fields">
+        <label class="f">Name unterstes Stockwerk<input id="setF0" type="text"></label>
+        <label class="f">Name mittleres Stockwerk<input id="setF1" type="text"></label>
+        <label class="f">Name oberstes Stockwerk<input id="setF2" type="text"></label>
         <label class="f">Feuchte-Schwelle Wohnräume (%)<input id="setThr" type="number" min="40" max="90" step="1"></label>
         <label class="f">Feuchte-Schwelle Bad (%)<input id="setThrBath" type="number" min="40" max="95" step="1"></label>
         <label class="f">Feuchtephase ab (Minuten)<input id="setMinPhase" type="number" min="10" max="600" step="5"></label>
@@ -240,6 +299,7 @@ footer{font-size:.82rem;color:var(--muted)}
   <footer>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
+  </div>
 </div>
 
 <div id="statusBar" class="statusbar" hidden>
@@ -413,10 +473,6 @@ function recommendations(sensor, A, ctx){
     tips.push({sev:last.forgotten?'bad':'warn', title:longOpen.length===1?'Fenster lange offen':'Fenster '+longOpen.length+'× lange offen',
       text:'Zuletzt am '+fmtDateTime(last.from)+' für etwa '+fmtDur(last.dur)+', die Temperatur fiel um '+last.drop.toFixed(1).replace('.',',')+' K.'+(winter?' In der Heizperiode kühlen dabei Laibungen und Wände aus, das kostet Heizenergie und begünstigt Schimmel. Besser 5–10 min weit öffnen statt lange kippen.':'')});
   }
-  if(type.target!=null && A.meanT>type.target+1.2 && winter){
-    var over=A.meanT-type.target;
-    tips.push({sev:'warn', title:'Wärmer als nötig', text:'Im Schnitt '+fmt1(A.meanT)+' °C. Für ein '+type.label+' reichen etwa '+type.target+' °C. Als Faustregel spart jedes Grad weniger rund 6 % Heizenergie, hier also grob '+Math.round(over*6)+' %.'});
-  }
   if(pctCold>0.1 && sensor.type!=='keller'){
     tips.push({sev:'warn', title:'Oft unter 16 °C', text:'Der Raum war '+Math.round(pctCold*100)+' % der Zeit kälter als 16 °C. Kalte Wände nehmen leichter Feuchte auf. Den Raum besser nicht stark auskühlen lassen, die Tür zu wärmeren Räumen aber geschlossen halten.'});
   }
@@ -446,9 +502,9 @@ function demoOutdoor(ts){ var d=new Date(ts), h=d.getHours()+d.getMinutes()/60, 
 function makeDemo(now){
   var end=Math.floor(now/MIN)*MIN, start=end-14*DAY, R=rng(7);
   var rooms=[
-    {id:'demo-bad', name:'Bad', type:'bad', btName:'TP357S (A1B2)'},
-    {id:'demo-schlaf', name:'Schlafzimmer', type:'schlaf', btName:'TP357S (C3D4)'},
-    {id:'demo-wohn', name:'Wohnzimmer', type:'wohn', btName:'TP357S (E5F6)'}];
+    {id:'demo-bad', name:'Bad', type:'bad', floor:1, btName:'TP357S (A1B2)'},
+    {id:'demo-schlaf', name:'Schlafzimmer', type:'schlaf', floor:1, btName:'TP357S (C3D4)'},
+    {id:'demo-wohn', name:'Wohnzimmer', type:'wohn', floor:0, btName:'TP357S (E5F6)'}];
   var series={};
   rooms.forEach(function(room,ri){
     var T=room.type==='bad'?22:(room.type==='schlaf'?18:21), H=room.type==='bad'?58:52, out={ts:[],t:[],h:[],q:[]};
@@ -489,7 +545,7 @@ function makeDemo(now){
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
 var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map()};
-var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3};
+var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Erdgeschoss','Obergeschoss','Dachgeschoss']};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 var statusTimer=null;
@@ -628,7 +684,7 @@ async function syncSensor(sensor,dev){
     return total;
   } finally { conn.onPacket=null; try{ dev.gatt.disconnect(); }catch(e){} progress(null); }
 }
-function stripSensor(s){ return {id:s.id,name:s.name,type:s.type,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
+function stripSensor(s){ return {id:s.id,name:s.name,type:s.type,floor:s.floor==null?0:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
 
 async function doSync(sensor){
   if(state.busy) return; if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
@@ -649,7 +705,7 @@ async function rekey(sensor,newId){ var old=sensor.id, S=state.series[old];
   delete state.series[old]; state.series[newId]=S||{ts:[],t:[],h:[],q:[]}; if(state.sel===old) state.sel=newId; await dbPut('sensors',stripSensor(sensor)); }
 async function syncAll(auto){
   if(state.busy) return;
-  if(state.demo||!state.sensors.length){ $('#secSensors').scrollIntoView({behavior:'smooth'}); setStatus('Koppel zuerst einen Sensor.'); return; }
+  if(state.demo||!state.sensors.length){ showTab('einstellungen'); setStatus('Koppel zuerst einen Sensor.'); return; }
   if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
   await knownDevices();
   var list=state.sensors.filter(function(s){ return !auto || (state.devices.has(s.id) && (!s.lastSync || Date.now()-s.lastSync>state.settings.autoAfterH*HOUR)); });
@@ -715,30 +771,66 @@ function currentOf(s){ var S=state.series[s.id]; var last=S&&S.ts.length?{ts:S.t
   if(s.live&&(!last||s.live.ts>last.ts)) return s.live; return last; }
 function ageText(ts){ var m=Math.round((Date.now()-ts)/MIN); if(m<2) return 'gerade eben'; if(m<60) return 'vor '+m+' min'; var h=Math.round(m/60); if(h<36) return 'vor '+h+' h'; return 'vor '+Math.round(h/24)+' Tagen'; }
 function thrFor(s){ return s.type==='bad'?state.settings.thrBath:state.settings.thr; }
+function floorNames(){ var f=(state.settings&&state.settings.floors)||DEFAULTS.floors; return [f[0],f[1],f[2]]; }
+function roomStatus(s,c){
+  if(!c) return {cls:'warn',txt:'keine Daten'};
+  if(!s.demo&&Date.now()-c.ts>2*DAY) return {cls:'warn',txt:'Stand '+ageText(c.ts)};
+  if(c.h>=thrFor(s)) return {cls:'bad',txt:'zu feucht – lüften'};
+  if(c.t<16&&s.type!=='keller') return {cls:'warn',txt:'kühl'};
+  if(c.h<35) return {cls:'warn',txt:'trocken'};
+  return {cls:'ok',txt:'gut'};
+}
 function renderRooms(){
-  var box=$('#rooms'); box.textContent='';
-  if(!state.sensors.length){ var p=el('p','muted','Noch kein Sensor gekoppelt. Unten bei „Sensoren“ geht es los.'); box.appendChild(p); return; }
-  state.sensors.forEach(function(s){
-    var c=currentOf(s), b=el('button','room'+(state.sel===s.id?' sel':'')); b.type='button'; b.setAttribute('aria-pressed',state.sel===s.id?'true':'false');
-    b.appendChild(el('span','name',s.name));
-    var vals=el('span','vals');
-    var vt=el('span','v t',c?fmt1(c.t):'–'); vt.appendChild(el('small',null,'°C'));
-    var vh=el('span','v h',c?String(c.h):'–'); vh.appendChild(el('small',null,'%'));
-    vals.appendChild(vt); vals.appendChild(vh); b.appendChild(vals);
-    var pill;
-    if(!c) pill=el('span','pill warn','keine Daten');
-    else if(!s.demo&&Date.now()-c.ts>2*DAY) pill=el('span','pill warn','Stand '+ageText(c.ts));
-    else if(c.h>=thrFor(s)) pill=el('span','pill bad','feucht – lüften');
-    else if(c.t<16&&s.type!=='keller') pill=el('span','pill warn','kühl');
-    else if(c.h<35) pill=el('span','pill warn','trocken');
-    else pill=el('span','pill ok','gut');
-    b.appendChild(pill);
-    if(c) b.appendChild(el('span','small muted num','Taupunkt '+fmt1(dewPoint(c.t,c.h))+' °C · '+fmt1(absHum(c.t,c.h))+' g/m³'));
-    b.addEventListener('click',function(){ state.sel=s.id; renderAll(); });
-    box.appendChild(b);
-  });
+  var box=$('#house'); box.textContent='';
+  var roof=el('div','roof'); roof.appendChild(el('div','chimney')); box.appendChild(roof);
+  var names=floorNames(), floors=[[],[],[]];
+  state.sensors.forEach(function(s,ix){ var f=s.floor==null?0:Math.max(0,Math.min(2,s.floor)); floors[f].push({s:s,ix:ix}); });
+  var B=0; floors.forEach(function(list){ var n=list.filter(function(x){return x.s.type==='bad';}).length; if(n>B) B=n; }); B=Math.min(B,2);
+  for(var f=2;f>=0;f--){
+    var list=floors[f].slice().sort(function(a,b){ var pa=a.s.pos||99, pb=b.s.pos||99; return pa-pb||a.ix-b.ix; });
+    var baths=list.filter(function(x){return x.s.type==='bad';}), others=list.filter(function(x){return x.s.type!=='bad';});
+    var fl=el('div','floor'); fl.appendChild(el('div','flabel',names[f]));
+    var grid=el('div','fgrid'); var nOther=Math.max(1,others.length);
+    grid.style.gridTemplateColumns=(B?'repeat('+B+',26%) ':'')+'repeat('+nOther+',minmax(0,1fr))';
+    for(var bI=0;bI<B;bI++){ if(baths[bI]) grid.appendChild(cellFor(baths[bI].s)); else { var e=el('div','cell empty'); e.setAttribute('aria-hidden','true'); grid.appendChild(e); } }
+    baths.slice(B).forEach(function(x){ others.unshift(x); });
+    if(!others.length){ grid.appendChild(el('div','cell none',list.length?'':'kein Sensor')); }
+    others.forEach(function(x){ grid.appendChild(cellFor(x.s)); });
+    fl.appendChild(grid); box.appendChild(fl);
+  }
+  box.appendChild(el('div','ground'));
+  var gi=el('div','groundinfo'), on=outdoorNow();
+  gi.appendChild(el('span',null,on?'Draußen '+fmt1(on.t)+' °C · '+Math.round(on.h)+' %':''));
   var oldest=state.sensors.filter(function(s){return !s.demo&&s.lastSync;}).map(function(s){return s.lastSync;});
-  $('#nowHint').textContent=oldest.length?'Zuletzt abgerufen '+ageText(Math.min.apply(null,oldest)):'';
+  gi.appendChild(el('span',null,oldest.length?'ältester Abruf '+ageText(Math.min.apply(null,oldest)):''));
+  box.appendChild(gi);
+  $('#nowHint').textContent=state.sensors.length?'Raum antippen für den Verlauf':'';
+}
+function cellFor(s){
+  var c=currentOf(s), st=roomStatus(s,c), b=el('button','cell'+(s.type==='bad'?' bath':'')); b.type='button';
+  b.setAttribute('aria-label',s.name+': '+(c?fmt1(c.t)+' Grad, '+c.h+' Prozent, ':'')+st.txt);
+  b.appendChild(el('span','cn',s.name)); b.appendChild(el('span','sd '+st.cls));
+  b.appendChild(el('span','ct',c?fmt1(c.t)+' °C':'–'));
+  b.appendChild(el('span','ch'+(c&&c.h>=thrFor(s)?' hi':''),c?c.h+' %':'–'));
+  if(st.cls!=='ok') b.appendChild(el('span','age',st.txt));
+  b.addEventListener('click',function(){ state.sel=s.id; showTab('verlauf'); });
+  return b;
+}
+function renderChips(){
+  var box=$('#roomChips'); box.textContent='';
+  state.sensors.slice().sort(function(a,b){ return (b.floor||0)-(a.floor||0)||(a.pos||99)-(b.pos||99); }).forEach(function(s){
+    var b=el('button',s.type==='bad'?'bath':null,s.name); b.type='button'; b.setAttribute('aria-pressed',String(state.sel===s.id));
+    b.addEventListener('click',function(){ state.sel=s.id; renderChips(); renderAnalysis(); }); box.appendChild(b); });
+  var on=box.querySelector('[aria-pressed="true"]'); if(on&&box.offsetParent) box.scrollLeft=Math.max(0,on.offsetLeft-box.offsetLeft-16);
+}
+var TABS=['uebersicht','verlauf','empfehlungen','einstellungen'], curTab='uebersicht';
+function showTab(name,noHash){
+  if(TABS.indexOf(name)<0) name='uebersicht'; curTab=name;
+  document.querySelectorAll('.pane').forEach(function(p){ p.hidden=p.dataset.pane!==name; });
+  document.querySelectorAll('.tabs button').forEach(function(b){ b.setAttribute('aria-selected',String(b.dataset.tab===name)); });
+  if(!noHash&&location.hash!=='#'+name){ try{ history.replaceState(null,'','#'+name); }catch(e){ location.hash=name; } }
+  if(name==='verlauf'){ renderChips(); renderAnalysis(); }
+  window.scrollTo(0,0);
 }
 var lastAnalysis=null;
 function renderAnalysis(){
@@ -777,7 +869,7 @@ function renderTips(){
     var issues=tips.filter(function(t){ return t.sev!=='ok'; }).sort(function(a,b){ return rank[a.sev]-rank[b.sev]; });
     if(issues.length) groups.push({s:s,tips:issues,worst:rank[issues[0].sev],n:issues.length}); else fine.push(s.name);
     var perDay=A.airDays>0?A.events.length/A.airDays:null, tr=el('tr');
-    var sev=issues.length?issues[0].sev:'ok', nameTd=el('td'); var nb=el('button','linkbtn',s.name); nb.type='button'; nb.addEventListener('click',function(){ state.sel=s.id; renderAll(); $('#secHist').scrollIntoView({behavior:'smooth'}); }); nameTd.appendChild(nb); tr.appendChild(nameTd);
+    var sev=issues.length?issues[0].sev:'ok', nameTd=el('td'); var nb=el('button','linkbtn',s.name); nb.type='button'; nb.addEventListener('click',function(){ state.sel=s.id; showTab('verlauf'); }); nameTd.appendChild(nb); tr.appendChild(nameTd);
     [A.n?fmt1(A.meanT)+' °C':'–', A.n?Math.round(A.meanH)+' %':'–', A.n?fmtDur(A.humidMin*MIN):'–', A.longestPhase?fmtDur(A.longestPhase):'–', perDay!=null?perDay.toFixed(1).replace('.',','):'–'].forEach(function(v){ tr.appendChild(el('td','num',v)); });
     var st=el('td'); st.appendChild(el('span','pill '+sev,{ok:'gut',warn:issues.length+' Hinweis'+(issues.length>1?'e':''),bad:'handeln'}[sev])); tr.appendChild(st);
     cmp.appendChild(tr); });
@@ -832,9 +924,11 @@ function renderSensors(){
       var ln=el('label','f','Raumname'); var inN=el('input'); inN.id='n_'+safeId(s.id); inN.value=s.name; ln.appendChild(inN); f.appendChild(ln);
       var lt=el('label','f','Raumtyp'); var sel=el('select'); sel.id='t_'+safeId(s.id); Object.keys(ROOMTYPES).forEach(function(k){ var o=el('option',null,ROOMTYPES[k].label); o.value=k; if(s.type===k) o.selected=true; sel.appendChild(o); }); lt.appendChild(sel); f.appendChild(lt);
       var lp=el('label','f','Protokoll'); var sp=el('select'); sp.id='p_'+safeId(s.id); [['auto','automatisch'],['C','TP357 / 358 / 359'],['S','TP357S']].forEach(function(x){ var o=el('option',null,x[1]); o.value=x[0]; if((s.proto||'auto')===x[0]) o.selected=true; sp.appendChild(o); }); lp.appendChild(sp); f.appendChild(lp);
+      var lf=el('label','f','Stockwerk'); var sf=el('select'); sf.id='f_'+safeId(s.id); floorNames().forEach(function(nm,ix){ var o=el('option',null,nm); o.value=String(ix); if((s.floor||0)===ix) o.selected=true; sf.appendChild(o); }); lf.appendChild(sf); f.appendChild(lf);
+      var lpo=el('label','f','Position im Stockwerk'); var ip=el('input'); ip.id='o_'+safeId(s.id); ip.type='number'; ip.min='1'; ip.max='9'; ip.value=s.pos||''; ip.placeholder='1 = links'; lpo.appendChild(ip); f.appendChild(lpo);
       d.appendChild(f);
-      var save=function(){ s.name=inN.value.trim()||s.name; s.type=sel.value; s.proto=sp.value; safe(dbPut('sensors',stripSensor(s))); renderRooms(); renderAnalysis(); renderTips(); renderOutdoor(); d.querySelector('h3').textContent=s.name; };
-      inN.addEventListener('change',save); sel.addEventListener('change',save); sp.addEventListener('change',save);
+      var save=function(){ s.name=inN.value.trim()||s.name; s.type=sel.value; s.proto=sp.value; s.floor=+sf.value; s.pos=clamp(+ip.value,0,9,0); safe(dbPut('sensors',stripSensor(s))); renderRooms(); renderChips(); renderAnalysis(); renderTips(); renderOutdoor(); d.querySelector('h3').textContent=s.name; };
+      inN.addEventListener('change',save); sel.addEventListener('change',save); sp.addEventListener('change',save); sf.addEventListener('change',save); ip.addEventListener('change',save);
       var del=el('div','row'); var rm=el('button',null,'Sensor entfernen'); rm.type='button';
       var confirmBox=el('span','row small'); confirmBox.hidden=true; confirmBox.appendChild(el('span',null,'Alle Messwerte dieses Raums löschen?'));
       var yes=el('button',null,'Ja, löschen'); yes.type='button'; var no=el('button',null,'Abbrechen'); no.type='button'; confirmBox.appendChild(yes); confirmBox.appendChild(no);
@@ -847,13 +941,13 @@ function renderSensors(){
 }
 function safeId(id){ return String(id).replace(/[^a-zA-Z0-9]/g,'_'); }
 function updateButtons(){ $('#btnSyncAll').disabled=state.busy; $('#btnCancel').hidden=!state.busy; $('#btnCloseStatus').hidden=state.busy; if(!state.busy&&$('#status').textContent&&!$('#status').classList.contains('err')){ clearTimeout(statusTimer); statusTimer=setTimeout(function(){ if(!state.busy) $('#statusBar').hidden=true; },12000); } renderSensors(); }
-function renderAll(){ if(!state.sel&&state.sensors.length) state.sel=state.sensors[0].id; $('#demoBanner').hidden=!state.demo; renderRooms(); renderAnalysis(); renderTips(); renderOutdoor(); renderSensors(); }
+function renderAll(){ if(!state.sel&&state.sensors.length) state.sel=state.sensors[0].id; $('#demoBanner').hidden=!state.demo; renderRooms(); renderChips(); renderAnalysis(); renderTips(); renderOutdoor(); renderSensors(); }
 
 /* --- Diagramm (Canvas) --- */
 var hoverX=null;
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 function drawChart(){
-  var cv=$('#chart'), dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
+  var cv=$('#chart'), dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight; if(!W) return;
   cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
   var ink=cssVar('--ink'), muted=cssVar('--muted'), line=cssVar('--line'), cT=cssVar('--temp'), cH=cssVar('--hum'), cSoft=cssVar('--hum-soft'), cBad=cssVar('--bad'), cWarn=cssVar('--warn'), cOk=cssVar('--ok');
   g.font='12px '+cssVar('--body'); g.textBaseline='middle';
@@ -921,7 +1015,7 @@ async function importBackup(file){
 }
 
 /* --- Start --- */
-function fillSettings(){ var st=state.settings; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
+function fillSettings(){ var st=state.settings; var fl=st.floors||DEFAULTS.floors; $('#setF0').value=fl[0]; $('#setF1').value=fl[1]; $('#setF2').value=fl[2]; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
 async function boot2(){
   await loadAll();
   state.demo=!state.sensors.length;
@@ -934,6 +1028,8 @@ async function boot2(){
 }
 document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; renderAnalysis(); renderTips(); }); });
 $('#btnSyncAll').addEventListener('click',function(){ syncAll(false); });
+document.querySelectorAll('.tabs button').forEach(function(b){ b.addEventListener('click',function(){ showTab(b.dataset.tab); }); });
+window.addEventListener('hashchange',function(){ var h=location.hash.slice(1); if(h&&h!==curTab) showTab(h,true); });
 $('#btnCancel').addEventListener('click',function(){ state.cancel=true; setStatus('Breche ab …'); });
 $('#btnCloseStatus').addEventListener('click',function(){ $('#statusBar').hidden=true; });
 $('#btnPair').addEventListener('click',function(){ pairNew(false); });
@@ -942,6 +1038,7 @@ $('#btnCsv').addEventListener('click',exportCsv);
 $('#btnBackup').addEventListener('click',exportBackup);
 $('#fileImport').addEventListener('change',function(e){ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=''; });
 $('#btnSaveSettings').addEventListener('click',async function(){ var st=state.settings;
+  var fl=st.floors||DEFAULTS.floors; st.floors=[$('#setF0').value.trim()||fl[0],$('#setF1').value.trim()||fl[1],$('#setF2').value.trim()||fl[2]];
   st.thr=clamp(+$('#setThr').value,40,90,62); st.thrBath=clamp(+$('#setThrBath').value,40,95,70); st.minPhase=clamp(+$('#setMinPhase').value,10,600,60); st.autoSync=$('#setAuto').value==='1'; st.autoAfterH=clamp(+$('#setAutoH').value,0,72,3);
   var newPlace=$('#setPlace').value.trim(), latIn=$('#setLat').value.trim(), lonIn=$('#setLon').value.trim(), placeChanged=newPlace!==(st.place||'');
   st.place=newPlace;
@@ -958,7 +1055,7 @@ cv.addEventListener('pointerleave',function(){ hoverX=null; drawChart(); });
 window.addEventListener('resize',function(){ drawChart(); });
 try{ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){ drawChart(); }); }catch(e){}
 new MutationObserver(function(){ drawChart(); }).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-(async function(){ idb=await openDB(); if(!idb) setStatus('Der Browser erlaubt hier keinen Datenspeicher. Messwerte gehen beim Schließen verloren.',true); await boot2(); })();
+(async function(){ showTab(location.hash.slice(1)||'uebersicht',true); idb=await openDB(); if(!idb) setStatus('Der Browser erlaubt hier keinen Datenspeicher. Messwerte gehen beim Schließen verloren.',true); await boot2(); })();
 </script>
 
 </body>
