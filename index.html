@@ -95,6 +95,15 @@ canvas{display:block;width:100%;height:300px;touch-action:pan-y}
 .tip p{margin:4px 0 0}
 /* Draußen */
 .out{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline}
+.lead{margin:0}
+.airrow{align-items:center;flex-wrap:wrap;padding:10px 0 10px 10px;border-left:3px solid transparent}
+.airrow.due{border-left-color:var(--warn)} .airrow.urgent{border-left-color:var(--bad)}
+.airl{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 180px}
+.airn{font-weight:600}
+.airp{display:flex;flex-wrap:wrap;gap:4px}
+.airr{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:0 0 auto}
+.airtip{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px}
+.airtip p{margin:0}
 /* Sensoren */
 .sensor{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 .fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
@@ -229,7 +238,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <section id="secOut">
-    <div class="sechead"><h2>Draußen &amp; Lüften jetzt</h2><span class="small muted" id="outHint"></span></div>
+    <div class="sechead"><h2>Welche Räume lüften?</h2><span class="small muted" id="outHint"></span></div>
     <div class="panel" id="outPanel"></div>
   </section>
   </div>
@@ -1052,31 +1061,50 @@ function renderTips(){
     box.appendChild(wrap); });
   if(fine.length){ var d=el('div','tip ok'); d.appendChild(el('div','sev')); var c=el('div'); c.appendChild(el('h3',null,'Im grünen Bereich')); c.appendChild(el('p',null,fine.join(', ')+'. Hier gibt es nichts zu tun.')); d.appendChild(c); box.appendChild(d); }
 }
+function airingNeed(s,ahOut){
+  var c=currentOf(s); if(!c) return null;
+  var now=Date.now(), reasons=[], score=0, info=null;
+  if(c.h>=thrFor(s)){ reasons.push({cls:'bad',txt:'zu feucht · '+c.h+' %'}); score+=3; }
+  if(c.co2&&c.co2>=1400){ reasons.push({cls:'bad',txt:'Luft schlecht · '+Math.round(c.co2).toLocaleString('de-DE')+' ppm'}); score+=3; }
+  else if(c.co2&&c.co2>=1000){ reasons.push({cls:'warn',txt:'Luft mäßig · '+Math.round(c.co2).toLocaleString('de-DE')+' ppm'}); score+=2; }
+  if(!isNa(s)){
+    var S=state.series[s.id];
+    if(S&&S.ts.length){ var end=S.ts[S.ts.length-1], A=analyze(s,S,end-3*DAY,end,state.settings,null), last=A.events.length?A.events[A.events.length-1]:null;
+      var recent=0; for(var i=S.ts.length-1;i>=0&&S.ts[i]>now-DAY;i--){ if(S.q[i]>=2) recent++; }
+      if(recent>=600){ if(!last||now-last.to>DAY){ reasons.push({cls:'warn',txt:last?'zuletzt gelüftet '+ageText(last.from):'über 24 h nicht gelüftet'}); score+=2; } else info='gelüftet '+ageText(last.from); }
+      else if(last) info='zuletzt gelüftet '+ageText(last.from);
+    }
+  }
+  if(now-c.ts>6*HOUR) info=(info?info+' · ':'')+'Werte '+ageText(c.ts);
+  var eff=null;
+  if(ahOut!=null){ var diff=absHum(c.t,c.h)-ahOut; eff=diff>1.5?{cls:'ok',txt:'senkt die Feuchte'}:(diff>0.3?{cls:'warn',txt:'bringt bei Feuchte wenig'}:{cls:'bad',txt:'erhöht die Feuchte'}); }
+  return {s:s,reasons:reasons,score:score,info:info,eff:eff};
+}
 function renderOutdoor(){
   var p=$('#outPanel'); p.textContent=''; var on=outdoorNow();
-  $('#outHint').textContent=state.demo?'Beispielwerte':(on&&on.src==='Netatmo'?'Netatmo · '+ageText(state.na.outdoor.ts):(state.outdoor?'Open-Meteo · '+state.settings.place:''));
-  if(!on && !state.demo && (state.settings.lat==null||state.settings.lon==null)){ p.appendChild(el('p','muted small','Trage unter „Sensoren → Einstellungen“ deinen Wohnort ein, dann zeigt die App hier das Außenwetter und ob Lüften gerade die Feuchte senkt.')); return; }
-  if(!on){ p.appendChild(el('p','muted small',state.outdoorErr?'Außenwetter konnte nicht geladen werden (offline oder in dieser Vorschau gesperrt).':'Außenwetter wird geladen …')); return; }
-  var ahOut=absHum(on.t,on.h), row=el('div','out');
-  var a=el('span','v t',fmt1(on.t)); a.appendChild(el('small',null,'°C')); row.appendChild(a);
-  var b=el('span','v h',String(Math.round(on.h))); b.appendChild(el('small',null,'%')); row.appendChild(b);
-  row.appendChild(el('span','muted small num',fmt1(ahOut)+' g/m³ Wasser in der Luft'));
-  p.appendChild(row);
-  var na=state.na, rain=na&&na.rain&&na.rain.ts&&Date.now()-na.rain.ts<90*MIN?na.rain:null, wind=na&&na.wind&&na.wind.ts&&Date.now()-na.wind.ts<90*MIN?na.wind:null;
-  if(rain||wind){ var r2=el('div','out small');
-    if(rain) r2.appendChild(el('span','num','Regen: '+(rain.h1!=null?fmt1(rain.h1)+' mm letzte Stunde':'–')+(rain.h24!=null?' · '+fmt1(rain.h24)+' mm heute':'')));
-    if(wind) r2.appendChild(el('span','num','Wind: '+(wind.strength!=null?Math.round(wind.strength)+' km/h':'–')+(wind.gust!=null?' · Böen '+Math.round(wind.gust)+' km/h':'')+(wind.angle!=null?' aus '+windDir(wind.angle):'')));
-    p.appendChild(r2);
-    var raining=rain&&((rain.now!=null&&rain.now>0)||(rain.h1!=null&&rain.h1>0.1)), stormy=wind&&wind.gust!=null&&wind.gust>=40;
-    if(raining||stormy){ var w=el('p','small'); w.appendChild(el('span','pill '+(stormy?'bad':'warn'),stormy?'Starker Wind':'Es regnet'));
-      w.appendChild(document.createTextNode(' '+(stormy?'Fenster nicht gekippt oder unbeaufsichtigt offen lassen. Kurz stoßlüften geht, auf der windabgewandten Seite.':'Kurz stoßlüften ist trotzdem sinnvoll, die Feuchte draußen kommt kaum ins Haus. Fenster aber nicht gekippt lassen, es kann reinregnen.'))); p.appendChild(w); } }
-  var dur=airDuration(on.t); p.appendChild(el('p','small',on.t<16?'Stoßlüften bei dieser Außentemperatur: etwa '+dur+', Fenster ganz öffnen, Heizkörper dabei zudrehen.':'Bei dieser Außentemperatur darf länger gelüftet werden, etwa '+dur+'.'));
-  var list=el('div','list');
-  state.sensors.forEach(function(s){ var c=currentOf(s); if(!c) return; var ahIn=absHum(c.t,c.h), diff=ahIn-ahOut, li=el('div','li');
-    li.appendChild(el('span',null,s.name));
-    var txt, cls; if(diff>1.5){ txt='Lüften senkt die Feuchte'; cls='ok'; } else if(diff>0.3){ txt='Lüften bringt wenig'; cls='warn'; } else { txt='Lüften erhöht die Feuchte'; cls='bad'; }
-    var r=el('span','r'); r.appendChild(el('span','pill '+cls,txt)); li.appendChild(r); list.appendChild(li); });
-  if(list.childNodes.length){ p.appendChild(list); p.appendChild(el('p','small muted','Verglichen wird die absolute Feuchte innen und außen. Kalte Außenluft ist fast immer trockener, im Sommer kann feuchtwarme Luft Keller und kühle Räume dagegen feuchter machen.')); }
+  $('#outHint').textContent=state.demo?'Beispielwerte':(on&&on.src==='Netatmo'?'Außenwerte: Netatmo':(state.outdoor?'Außenwerte: Open-Meteo':''));
+  var ahOut=on?absHum(on.t,on.h):null;
+  var rows=state.sensors.filter(function(s){ return !s.hidden; }).map(function(s){ return airingNeed(s,ahOut); }).filter(Boolean)
+    .sort(function(a,b){ return b.score-a.score||a.s.name.localeCompare(b.s.name,'de'); });
+  var due=rows.filter(function(r){ return r.score>0; });
+  p.appendChild(el('p','small lead',rows.length?(due.length?(due.length===1?'1 Raum sollte':''+due.length+' Räume sollten')+' jetzt gelüftet werden. Gründe: zu feucht, verbrauchte Luft oder seit über 24 Stunden nicht gelüftet.':'Gerade muss kein Raum gelüftet werden.'):'Sobald Messwerte vorliegen, steht hier, welche Räume gelüftet werden sollten.'));
+  if(rows.length){ var list=el('div','list airlist');
+    rows.forEach(function(r){ var li=el('div','li airrow'+(r.score>=3?' urgent':(r.score>0?' due':'')));
+      var left=el('div','airl'); left.appendChild(el('span','airn',r.s.name));
+      var pills=el('div','airp'); if(r.reasons.length) r.reasons.forEach(function(x){ pills.appendChild(el('span','pill '+x.cls,x.txt)); }); else pills.appendChild(el('span','pill ok','alles gut'));
+      left.appendChild(pills); if(r.info) left.appendChild(el('span','small muted',r.info)); li.appendChild(left);
+      if(r.eff&&r.score>0){ var rr=el('div','airr'); rr.appendChild(el('span','small muted','Lüften jetzt')); rr.appendChild(el('span','pill '+r.eff.cls,r.eff.txt)); li.appendChild(rr); }
+      list.appendChild(li); });
+    p.appendChild(list); }
+  if(!on){ p.appendChild(el('p','muted small',(!state.demo&&state.settings.lat==null&&!naConfigured())?'Trage unter „Einstellungen“ deinen Wohnort ein, dann zeigt die App auch, ob das Wetter draußen gerade zum Lüften passt.':(state.outdoorErr?'Außenwetter konnte nicht geladen werden.':'Außenwetter wird geladen …'))); return; }
+  var w=weatherNow(), raining=(w.rainNow!=null&&w.rainNow>0)||(w.rain1!=null&&w.rain1>0.1), stormy=w.gust!=null&&w.gust>=40;
+  var tip=el('div','airtip'); tip.appendChild(el('h3',null,'So lüften bei '+fmt1(on.t)+' °C draußen'));
+  var dur=airDuration(on.t);
+  tip.appendChild(el('p','small',on.t<16?'Etwa '+dur+' Fenster ganz öffnen, am besten quer durchs Haus. Heizkörper dabei zudrehen, danach wieder auf.':'Bei dieser Außentemperatur darf länger gelüftet werden, etwa '+dur+'.'));
+  if(raining||stormy){ var wp=el('p','small'); wp.appendChild(el('span','pill '+(stormy?'bad':'warn'),stormy?'Starker Wind':'Es regnet'));
+    wp.appendChild(document.createTextNode(' '+(stormy?'Fenster nicht gekippt oder unbeaufsichtigt offen lassen. Kurz stoßlüften geht, am besten auf der windabgewandten Seite.':'Kurz stoßlüften ist trotzdem sinnvoll, Regen macht die Luft im Haus kaum feuchter. Fenster aber nicht gekippt lassen.'))); tip.appendChild(wp); }
+  tip.appendChild(el('p','small muted','„Senkt die Feuchte“ heißt: Die Außenluft enthält weniger Wasser als die Raumluft (draußen '+fmt1(ahOut)+' g/m³). Kalte Luft ist fast immer trockener. Im Sommer kann feuchtwarme Luft kühle Räume wie den Keller dagegen feuchter machen.'));
+  p.appendChild(tip);
 }
 function renderSensors(){
   var box=$('#sensorList'); box.textContent='';
