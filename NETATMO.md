@@ -38,7 +38,7 @@ Danach erscheinen die Innenmodule als Räume bei den Sensoren. Dort jedem das ri
 
 - **Innenmodule:** Temperatur, Luftfeuchte und CO₂, aktuell und als Verlauf im 30-Minuten-Raster (beim ersten Abruf 14 Tage).
 - **Außenmodul:** ersetzt den Wetterdienst für „Lohnt sich Lüften?“ und die Schimmelabschätzung.
-- **Regen und Wind:** Hinweise wie „Es regnet“ oder „Starker Wind“.
+- **Regen und Wind:** aktuelle Werte mit Hinweisen wie „Es regnet“ oder „Starker Wind“, dazu Verläufe (Wind mit Böen und Richtung, Regen als Stunden- bzw. Tagesbalken).
 
 ## Wenn etwas nicht klappt
 

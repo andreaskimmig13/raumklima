@@ -62,6 +62,8 @@ function doGet(e) {
           ind.history = measure_(dev._id, ind.module, 'temperature,humidity,co2', begin);
         });
         if (st.outdoor) st.outdoor.history = measure_(dev._id, st.outdoor.id, 'temperature,humidity', begin);
+        if (st.wind) st.wind.history = measure_(dev._id, st.wind.id, 'windstrength,guststrength,windangle', begin);
+        if (st.rain) st.rain.history = measure_(dev._id, st.rain.id, 'sum_rain', begin, '1hour');
       }
       res.stations.push(st);
     });
@@ -77,8 +79,8 @@ function indoor_(devId, modId, name, d, reachable, battery) {
     noise: num_(d.Noise), pressure: num_(d.Pressure), ts: d.time_utc ? d.time_utc * 1000 : null, reachable: reachable, battery: battery == null ? null : battery };
 }
 
-function measure_(devId, modId, types, begin) {
-  var params = { device_id: devId, scale: '30min', type: types, date_begin: String(begin), optimize: 'false', real_time: 'false' };
+function measure_(devId, modId, types, begin, scale) {
+  var params = { device_id: devId, scale: scale || '30min', type: types, date_begin: String(begin), optimize: 'false', real_time: 'false' };
   if (modId) params.module_id = modId;
   try {
     var body = api_('getmeasure', params) || {};
