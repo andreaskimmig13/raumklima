@@ -118,6 +118,13 @@ details.more{padding:0;border:0;background:none;display:flex;flex-direction:colu
 details.more summary{font-size:.9rem;color:var(--hum);padding:4px 0}
 details.more[open] summary{margin-bottom:8px}
 details.more .tip{margin-top:8px}
+.statusbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.12);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.statusinner{max-width:760px;margin:0 auto;display:flex;gap:10px;align-items:center}
+.statustext{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.statusbar .status{color:var(--ink);font-size:.92rem}
+#btnCloseStatus{min-width:42px;padding:6px 10px;font-size:1.2rem;line-height:1}
+body{padding-bottom:120px}
 footer{font-size:.82rem;color:var(--muted)}
 </style>
 
@@ -133,8 +140,6 @@ footer{font-size:.82rem;color:var(--muted)}
       <button class="primary" id="btnSyncAll" type="button">Alle Sensoren abrufen</button>
     </div>
   </header>
-  <div id="status" class="status" role="status" aria-live="polite"></div>
-  <div id="progressWrap" class="progress" hidden><div id="progressBar"></div></div>
 
   <div id="demoBanner" class="banner demo" hidden>
     <strong>Beispieldaten.</strong> Drei erfundene Räume über 14 Tage, damit du siehst, wie die Auswertung aussieht. Sobald du unten einen echten Sensor koppelst, verschwinden sie.
@@ -232,6 +237,15 @@ footer{font-size:.82rem;color:var(--muted)}
   <footer>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
+</div>
+
+<div id="statusBar" class="statusbar" hidden>
+  <div class="statusinner">
+    <div class="statustext"><div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="progressWrap" class="progress" hidden><div id="progressBar"></div></div></div>
+    <button type="button" id="btnCancel" hidden>Abbrechen</button>
+    <button type="button" id="btnCloseStatus" aria-label="Meldung schließen">×</button>
+  </div>
 </div>
 
 <script id="core">
@@ -475,7 +489,11 @@ var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, 
 var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
-function setStatus(t,err){ var s=$('#status'); s.textContent=t||''; s.classList.toggle('err',!!err); }
+var statusTimer=null;
+function setStatus(t,err){ var s=$('#status'); s.textContent=t||''; s.classList.toggle('err',!!err); var bar=$('#statusBar'); bar.hidden=!t;
+  $('#btnCancel').hidden=!state.busy; $('#btnCloseStatus').hidden=state.busy;
+  clearTimeout(statusTimer); if(t&&!state.busy&&!err) statusTimer=setTimeout(function(){ if(!state.busy) bar.hidden=true; },12000); }
+function checkCancel(){ if(state.cancel) throw new Error('Abgebrochen. Bereits empfangene Daten sind gespeichert.'); }
 function logLine(t){ var l=$('#log'); if(l.dataset.fresh!=='1'){ l.textContent=''; l.dataset.fresh='1'; } l.textContent+=new Date().toLocaleTimeString('de-DE')+'  '+t+'\n'; l.scrollTop=l.scrollHeight; }
 function progress(p){ var w=$('#progressWrap'); if(p==null){ w.hidden=true; return; } w.hidden=false; $('#progressBar').style.width=Math.round(p*100)+'%'; }
 var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
@@ -524,13 +542,14 @@ async function openConn(dev){
   logLine('Verbinde mit '+(dev.name||dev.id)+' …');
   var server=await withTimeout(dev.gatt.connect(),20000,'Verbindung kam nicht zustande. Ist der Sensor in Reichweite?');
   var notify=null, write=null;
-  try{ var s=await server.getPrimaryService(SVC); notify=await s.getCharacteristic(CH_NOTIFY); write=await s.getCharacteristic(CH_WRITE); }
-  catch(e){ try{ var all=await server.getPrimaryServices(); for(var i=0;i<all.length&&!notify;i++){ try{ notify=await all[i].getCharacteristic(CH_NOTIFY); write=await all[i].getCharacteristic(CH_WRITE); }catch(_){ notify=null; } } }catch(_){} }
+  logLine('Suche Messkanal …');
+  try{ var s=await withTimeout(server.getPrimaryService(SVC),12000,'Zeitüberschreitung'); notify=await withTimeout(s.getCharacteristic(CH_NOTIFY),8000,'Zeitüberschreitung'); write=await withTimeout(s.getCharacteristic(CH_WRITE),8000,'Zeitüberschreitung'); }
+  catch(e){ logLine('Standarddienst nicht gefunden ('+e.message+'), suche weiter …'); try{ var all=await withTimeout(server.getPrimaryServices(),12000,'Zeitüberschreitung'); for(var i=0;i<all.length&&!notify;i++){ try{ notify=await all[i].getCharacteristic(CH_NOTIFY); write=await all[i].getCharacteristic(CH_WRITE); }catch(_){ notify=null; } } }catch(_){} }
   if(!notify||!write) throw new Error('Messkanal des Sensors nicht gefunden. Wird er gerade von der ThermoPro-App benutzt?');
   var conn={dev:dev, server:server, notify:notify, write:write, onPacket:null, live:null};
   notify.addEventListener('characteristicvaluechanged',function(ev){ var v=ev.target.value, d=new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength));
     var lv=liveDecode(d); if(lv && d.length<=8) conn.live={t:lv.t,h:lv.h,ts:Date.now()}; if(conn.onPacket) conn.onPacket(d); });
-  await notify.startNotifications();
+  await withTimeout(notify.startNotifications(),10000,'Der Sensor nimmt keine Verbindung für Messwerte an. Sensor kurz aus der Reichweite nehmen oder Batterie kurz entnehmen und erneut versuchen.');
   logLine('Verbunden.');
   return conn;
 }
@@ -554,7 +573,8 @@ async function fetchS(conn,count){
   var cmds=sHistoryCmds(req,count); for(var i=0;i<cmds.length;i++){ await send(conn,cmds[i]); await sleep(200); }
   logLine('Verlauf angefordert ('+count+' Minuten).');
   var t0=Date.now();
-  while(!done){ await sleep(250); if(Date.now()-lastRx>30000){ break; } if(Date.now()-t0>180000) break; }
+  while(!done){ await sleep(250); if(state.cancel) break; if(Date.now()-lastRx>30000){ break; } if(Date.now()-t0>180000) break; }
+  if(state.cancel){ conn.onPacket=null; checkCancel(); }
   conn.onPacket=null;
   var buf=concat(chunks); if(expected) buf=buf.subarray(0,expected);
   if(!chunks.length) throw new Error('Der Sensor hat keinen Verlauf geschickt.');
@@ -568,7 +588,8 @@ async function fetchC(conn,mode){
   await send(conn,cCmd(mode));
   logLine('Verlauf angefordert ('+({day:'24 h, minütlich',week:'7 Tage, stündlich',year:'1 Jahr, stündlich'}[mode])+').');
   var t0=Date.now();
-  while(!finished){ await sleep(250); if(packets.length && Date.now()-lastRx>4000) break; if(!packets.length && Date.now()-t0>20000) break; if(Date.now()-t0>240000) break; }
+  while(!finished){ await sleep(250); if(state.cancel) break; if(packets.length && Date.now()-lastRx>4000) break; if(!packets.length && Date.now()-t0>20000) break; if(Date.now()-t0>600000) break; }
+  if(state.cancel){ conn.onPacket=null; if(!packets.length) checkCancel(); }
   conn.onPacket=null;
   if(!packets.length) throw new Error('Der Sensor hat keinen Verlauf geschickt.');
   var dec=cDecode(packets,mode); logLine(dec.length+' Werte empfangen.');
@@ -589,28 +610,32 @@ async function syncSensor(sensor,dev){
       recs=await fetchS(conn,Math.max(60,count));
     } else {
       var la=lastAnyTs(sensor.id), lmc=lastMinuteTs(sensor.id), modes=['day'];
-      if(!la||now-la>7*DAY) modes=['year','week','day']; else if(!lmc||now-lmc>DAY) modes=['week','day'];
-      for(var i=0;i<modes.length;i++){ recs=recs.concat(await fetchC(conn,modes[i])); }
+      if(!la||now-la>7*DAY) modes=['day','week','year']; else if(!lmc||now-lmc>DAY) modes=['day','week'];
+      var labels={day:'letzte 24 Stunden',week:'letzte 7 Tage',year:'letztes Jahr (dauert einige Minuten)'}, stored=0;
+      for(var i=0;i<modes.length;i++){ checkCancel();
+        setStatus('„'+sensor.name+'“: Schritt '+(i+1)+' von '+modes.length+' – '+labels[modes[i]]+' …');
+        var part=await fetchC(conn,modes[i]); await storeRecords(sensor.id,part); stored+=part.length; renderRooms(); }
+      recs=[]; logLine('Verlauf gespeichert ('+stored+' Werte).');
     }
     if(live){ recs.push({ts:Math.floor(live.ts/MIN)*MIN,t:live.t,h:live.h,q:2}); sensor.live=live; }
-    await storeRecords(sensor.id,recs);
+    if(recs.length) await storeRecords(sensor.id,recs);
     sensor.lastSync=Date.now(); sensor.btName=dev.name||sensor.btName; await dbPut('sensors',stripSensor(sensor));
-    logLine('Gespeichert: '+recs.length+' Werte.');
-    return recs.length;
+    var total=(state.series[sensor.id]||{ts:[]}).ts.length; logLine('Fertig. Im Speicher: '+total+' Werte.');
+    return total;
   } finally { conn.onPacket=null; try{ dev.gatt.disconnect(); }catch(e){} progress(null); }
 }
 function stripSensor(s){ return {id:s.id,name:s.name,type:s.type,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
 
 async function doSync(sensor){
   if(state.busy) return; if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
-  state.busy=true; updateButtons();
+  state.cancel=false; state.busy=true; updateButtons();
   try{
     await knownDevices();
     var dev=state.devices.get(sensor.id);
     if(!dev){ setStatus('Bitte „'+sensor.name+'“ in der Liste auswählen …'); dev=await pickDevice({name:sensor.btName}); if(dev.id!==sensor.id) await rekey(sensor,dev.id); }
     setStatus('Rufe „'+sensor.name+'“ ab …');
     var n=await syncSensor(sensor,dev);
-    setStatus('„'+sensor.name+'“ abgerufen: '+n.toLocaleString('de-DE')+' Messwerte.');
+    setStatus('„'+sensor.name+'“ abgerufen, Verlauf gespeichert.');
   }catch(e){ handleBtError(e); }
   finally{ state.busy=false; updateButtons(); renderAll(); }
 }
@@ -621,7 +646,7 @@ async function rekey(sensor,newId){ var old=sensor.id, S=state.series[old];
 async function syncAll(){
   if(state.demo||!state.sensors.length){ $('#secSensors').scrollIntoView({behavior:'smooth'}); setStatus('Koppel zuerst einen Sensor.'); return; }
   if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
-  state.busy=true; updateButtons(); await knownDevices();
+  state.cancel=false; state.busy=true; updateButtons(); await knownDevices();
   var ok=0, miss=[];
   for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i], dev=state.devices.get(s.id);
     if(!dev){ miss.push(s.name); continue; }
@@ -642,8 +667,8 @@ async function pairNew(all){
     var s={id:dev.id,name:roomGuess(),type:'wohn',proto:'auto',btName:dev.name||'Sensor',created:Date.now()};
     state.sensors.push(s); state.series[s.id]={ts:[],t:[],h:[],q:[]}; state.sel=s.id;
     await dbPut('sensors',stripSensor(s)); renderAll();
-    state.busy=true; updateButtons(); setStatus('Gekoppelt. Lade den gespeicherten Verlauf …');
-    var n=await syncSensor(s,dev); setStatus('Fertig: '+n.toLocaleString('de-DE')+' Messwerte. Gib dem Sensor unten einen Raumnamen und Raumtyp.');
+    state.cancel=false; state.busy=true; updateButtons(); setStatus('Gekoppelt. Lade den gespeicherten Verlauf …');
+    var n=await syncSensor(s,dev); setStatus('Fertig, Verlauf gespeichert. Gib dem Sensor jetzt einen Raumnamen und Raumtyp.');
   }catch(e){ handleBtError(e); }
   finally{ state.busy=false; updateButtons(); renderAll(); }
 }
@@ -786,7 +811,7 @@ function renderSensors(){
     var d=el('div','sensor'); var head=el('div','row'); head.style.justifyContent='space-between';
     var t=el('div'); t.appendChild(el('h3',null,s.name)); t.appendChild(el('div','small muted',(s.btName||'')+(s.lastSync?' · abgerufen '+ageText(s.lastSync):' · noch nicht abgerufen')+(s.demo?' · Beispiel':''))); head.appendChild(t);
     var btns=el('div','row');
-    if(!s.demo){ var sb=el('button','primary','Abrufen'); sb.type='button'; sb.disabled=state.busy||!btAvailable(); sb.addEventListener('click',function(){ doSync(s); }); btns.appendChild(sb); }
+    if(!s.demo){ var sb=el('button','primary',state.busy?'Läuft …':'Abrufen'); sb.type='button'; sb.disabled=state.busy||!btAvailable(); sb.addEventListener('click',function(){ doSync(s); }); btns.appendChild(sb); }
     head.appendChild(btns); d.appendChild(head);
     if(!s.demo){
       var f=el('div','fields');
@@ -807,7 +832,7 @@ function renderSensors(){
   });
 }
 function safeId(id){ return String(id).replace(/[^a-zA-Z0-9]/g,'_'); }
-function updateButtons(){ $('#btnSyncAll').disabled=state.busy; renderSensors(); }
+function updateButtons(){ $('#btnSyncAll').disabled=state.busy; $('#btnCancel').hidden=!state.busy; $('#btnCloseStatus').hidden=state.busy; if(!state.busy&&$('#status').textContent&&!$('#status').classList.contains('err')){ clearTimeout(statusTimer); statusTimer=setTimeout(function(){ if(!state.busy) $('#statusBar').hidden=true; },12000); } renderSensors(); }
 function renderAll(){ if(!state.sel&&state.sensors.length) state.sel=state.sensors[0].id; $('#demoBanner').hidden=!state.demo; renderRooms(); renderAnalysis(); renderTips(); renderOutdoor(); renderSensors(); }
 
 /* --- Diagramm (Canvas) --- */
@@ -893,6 +918,8 @@ async function boot2(){
 }
 document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; renderAnalysis(); renderTips(); }); });
 $('#btnSyncAll').addEventListener('click',syncAll);
+$('#btnCancel').addEventListener('click',function(){ state.cancel=true; setStatus('Breche ab …'); });
+$('#btnCloseStatus').addEventListener('click',function(){ $('#statusBar').hidden=true; });
 $('#btnPair').addEventListener('click',function(){ pairNew(false); });
 $('#btnPairAll').addEventListener('click',function(){ pairNew(true); });
 $('#btnCsv').addEventListener('click',exportCsv);
