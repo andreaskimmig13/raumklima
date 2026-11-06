@@ -92,7 +92,6 @@ canvas{display:block;width:100%;height:320px;touch-action:pan-y}
 .tip .sev{border-radius:3px;background:var(--ok)}
 .tip.warn .sev{background:var(--warn)} .tip.bad .sev{background:var(--bad)}
 .tip p{margin:4px 0 0}
-.tip .room-label{font-size:.78rem;color:var(--muted);font-weight:600}
 /* Draußen */
 .out{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline}
 /* Sensoren */
@@ -107,6 +106,18 @@ details[open] summary{margin-bottom:10px}
 .progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
 .progress>div{height:100%;width:0;background:var(--hum);transition:width .2s}
 @media (prefers-reduced-motion:reduce){.progress>div{transition:none}}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table.cmp{border-collapse:collapse;width:100%;font-size:.9rem;min-width:620px}
+table.cmp th,table.cmp td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+table.cmp th{font-family:var(--display);font-stretch:85%;font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+table.cmp tr:last-child td{border-bottom:0}
+.linkbtn{border:0;background:none;padding:0;min-height:0;color:var(--hum);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.tipgroup{display:flex;flex-direction:column;gap:8px}
+.tiproom{font-size:1rem;margin-top:6px}
+details.more{padding:0;border:0;background:none;display:flex;flex-direction:column;gap:8px}
+details.more summary{font-size:.9rem;color:var(--hum);padding:4px 0}
+details.more[open] summary{margin-bottom:8px}
+details.more .tip{margin-top:8px}
 footer{font-size:.82rem;color:var(--muted)}
 </style>
 
@@ -160,6 +171,14 @@ footer{font-size:.82rem;color:var(--muted)}
     </div>
   </section>
 
+  <section id="secCmp">
+    <div class="sechead"><h2>Räume im Vergleich</h2><span class="small muted" id="cmpHint"></span></div>
+    <div class="tablewrap"><table class="cmp">
+      <thead><tr><th>Raum</th><th>Ø Temp.</th><th>Ø Feuchte</th><th>zu feucht</th><th>längste Phase</th><th>Lüften / Tag</th><th>Status</th></tr></thead>
+      <tbody id="cmpBody"></tbody>
+    </table></div>
+  </section>
+
   <section id="secTips">
     <div class="sechead"><h2>Empfehlungen</h2><span class="small muted" id="tipsHint"></span></div>
     <div class="tips" id="tips"></div>
@@ -177,6 +196,7 @@ footer{font-size:.82rem;color:var(--muted)}
       <button type="button" id="btnPair" class="primary">Neuen Sensor koppeln</button>
       <button type="button" id="btnPairAll">Alle Bluetooth-Geräte zeigen</button>
     </div>
+    <p class="small muted" style="margin:0">Mehrere Sensoren einzeln koppeln und den Raum sofort benennen: In der Auswahlliste heißen alle ähnlich, nur die vier Zeichen in Klammern unterscheiden sich. Zur Kontrolle nach dem Koppeln den angezeigten Wert mit dem Display des Sensors vergleichen.</p>
     <div id="sensorList" style="display:flex;flex-direction:column;gap:10px"></div>
 
     <details id="settingsBox">
@@ -715,15 +735,28 @@ function renderAnalysis(){
 }
 function statEl(v,l){ var d=el('div','stat'); d.appendChild(el('b',null,v)); d.appendChild(el('span',null,l)); return d; }
 function renderTips(){
-  var box=$('#tips'); box.textContent=''; var on=outdoorNow(), ctx={outNow:on?on.t:null}, all=[];
-  var oa=outdoorAtFn();
+  var box=$('#tips'); box.textContent=''; var on=outdoorNow(), ctx={outNow:on?on.t:null}, groups=[], fine=[];
+  var oa=outdoorAtFn(), rank={bad:0,warn:1,ok:2}, cmp=$('#cmpBody'); cmp.textContent='';
   state.sensors.forEach(function(s){ var S=state.series[s.id]; if(!S||!S.ts.length) return; var to=S.ts[S.ts.length-1];
-    var A=analyze(s,S,to-state.range*DAY,to,state.settings,oa); recommendations(s,A,ctx).forEach(function(t){ t.room=s.name; all.push(t); }); });
-  var rank={bad:0,warn:1,ok:2}; all.sort(function(a,b){ return rank[a.sev]-rank[b.sev]; });
+    var A=analyze(s,S,to-state.range*DAY,to,state.settings,oa), tips=recommendations(s,A,ctx);
+    var issues=tips.filter(function(t){ return t.sev!=='ok'; }).sort(function(a,b){ return rank[a.sev]-rank[b.sev]; });
+    if(issues.length) groups.push({s:s,tips:issues,worst:rank[issues[0].sev],n:issues.length}); else fine.push(s.name);
+    var perDay=A.airDays>0?A.events.length/A.airDays:null, tr=el('tr');
+    var sev=issues.length?issues[0].sev:'ok', nameTd=el('td'); var nb=el('button','linkbtn',s.name); nb.type='button'; nb.addEventListener('click',function(){ state.sel=s.id; renderAll(); $('#secHist').scrollIntoView({behavior:'smooth'}); }); nameTd.appendChild(nb); tr.appendChild(nameTd);
+    [A.n?fmt1(A.meanT)+' °C':'–', A.n?Math.round(A.meanH)+' %':'–', A.n?fmtDur(A.humidMin*MIN):'–', A.longestPhase?fmtDur(A.longestPhase):'–', perDay!=null?perDay.toFixed(1).replace('.',','):'–'].forEach(function(v){ tr.appendChild(el('td','num',v)); });
+    var st=el('td'); st.appendChild(el('span','pill '+sev,{ok:'gut',warn:issues.length+' Hinweis'+(issues.length>1?'e':''),bad:'handeln'}[sev])); tr.appendChild(st);
+    cmp.appendChild(tr); });
+  groups.sort(function(a,b){ return a.worst-b.worst||b.n-a.n; });
   $('#tipsHint').textContent='Grundlage: letzte '+(state.range===1?'24 Stunden':state.range+' Tage');
-  if(!all.length){ box.appendChild(el('p','muted','Sobald Messwerte vorliegen, stehen hier Hinweise je Raum.')); return; }
-  all.forEach(function(t){ var d=el('div','tip '+t.sev); d.appendChild(el('div','sev')); var c=el('div');
-    c.appendChild(el('div','room-label',t.room)); c.appendChild(el('h3',null,t.title)); c.appendChild(el('p',null,t.text)); d.appendChild(c); box.appendChild(d); });
+  $('#cmpHint').textContent=$('#tipsHint').textContent;
+  if(!groups.length&&!fine.length){ box.appendChild(el('p','muted','Sobald Messwerte vorliegen, stehen hier Hinweise je Raum.')); return; }
+  groups.forEach(function(g){ var wrap=el('div','tipgroup'); wrap.appendChild(el('h3','tiproom',g.s.name));
+    var more=null;
+    g.tips.forEach(function(t,i){ var d=el('div','tip '+t.sev); d.appendChild(el('div','sev')); var c=el('div');
+      c.appendChild(el('h3',null,t.title)); c.appendChild(el('p',null,t.text)); d.appendChild(c);
+      if(i<2) wrap.appendChild(d); else { if(!more){ more=el('details','more'); more.appendChild(el('summary',null,(g.tips.length-2)+' weitere'+(g.tips.length-2>1?' Hinweise':'r Hinweis'))); wrap.appendChild(more); } more.appendChild(d); } });
+    box.appendChild(wrap); });
+  if(fine.length){ var d=el('div','tip ok'); d.appendChild(el('div','sev')); var c=el('div'); c.appendChild(el('h3',null,'Im grünen Bereich')); c.appendChild(el('p',null,fine.join(', ')+'. Hier gibt es nichts zu tun.')); d.appendChild(c); box.appendChild(d); }
 }
 function renderOutdoor(){
   var p=$('#outPanel'); p.textContent=''; var on=outdoorNow();
