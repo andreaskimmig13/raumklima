@@ -18,7 +18,7 @@
   --ok:#2c7a4c; --warn:#a86a12; --bad:#b03c2a;
   --ok-bg:#e3f2e9; --warn-bg:#fbefdc; --bad-bg:#fbe4df;
   --btn-ink:#ffffff;
-  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf; --earth:#d9cfc3; --co2:#6b5bb5; --meadow:#b9d9a3; --meadow2:#d6e8c6; --tree:#5f9a58; --trunk:#7a5a3c; --roof-hi:#b5c3cc; --temp-soft:rgba(184,98,26,.45); --line-strong:#a9b7c1;
+  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf; --earth:#d9cfc3; --co2:#6b5bb5; --meadow:#dbe1d6; --meadow2:#e6eae2; --tree:#9aaa95; --trunk:#8b7d70; --roof-hi:#b5c3cc; --temp-soft:rgba(184,98,26,.45); --line-strong:#a9b7c1;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
   --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
@@ -26,12 +26,12 @@
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; --meadow:#2b4a2a; --meadow2:#223a22; --tree:#3f7340; --trunk:#5c4430; --roof-hi:#2f414d; --temp-soft:rgba(238,160,87,.45); --line-strong:#4a5c69; color-scheme:dark}}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; --meadow:#232b25; --meadow2:#1c231e; --tree:#46564a; --trunk:#4b4239; --roof-hi:#2f414d; --temp-soft:rgba(238,160,87,.45); --line-strong:#4a5c69; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; --meadow:#2b4a2a; --meadow2:#223a22; --tree:#3f7340; --trunk:#5c4430; --roof-hi:#2f414d; --temp-soft:rgba(238,160,87,.45); --line-strong:#4a5c69; color-scheme:dark}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; --meadow:#232b25; --meadow2:#1c231e; --tree:#46564a; --trunk:#4b4239; --roof-hi:#2f414d; --temp-soft:rgba(238,160,87,.45); --line-strong:#4a5c69; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 48px}
@@ -215,30 +215,30 @@ table.cmp td.up{color:var(--temp)} table.cmp td.down{color:var(--hum)}
 .cumbox p{margin:0} .cumsum{font-weight:600}
 canvas.cumchart{height:220px}
 .landing{display:flex;flex-direction:column;gap:12px}
-.scene{display:block;width:100%;max-width:520px;margin:0 auto;padding:0;border:0;background:none;min-height:0;cursor:pointer;border-radius:16px}
-.scenesvg{display:block;width:100%;height:auto}
+.scene{width:100%;max-width:520px;margin:0 auto}
+.scenesvg{display:block;width:100%;height:auto;font-family:var(--display)}
 .scenesvg .hill{fill:var(--meadow)} .scenesvg .hill2{fill:var(--meadow2)}
-.scenesvg .tree circle{fill:var(--tree)} .scenesvg .trunk{fill:var(--trunk)} .scenesvg .bush circle{fill:var(--tree);opacity:.8}
+.scenesvg .tree circle{fill:var(--tree)} .scenesvg .trunk{fill:var(--trunk)} .scenesvg .bush circle{fill:var(--tree);opacity:.7}
 .scenesvg .roof{fill:var(--roof);stroke:var(--wall);stroke-width:2.5;stroke-linejoin:round}
 .scenesvg .body{fill:var(--surface);stroke:var(--wall);stroke-width:2.5}
-.scenesvg .chim{fill:var(--wall)} .scenesvg .door{fill:var(--wall)}
+.scenesvg .chim,.scenesvg .door{fill:var(--wall)}
 .scenesvg .win{fill:var(--hum-soft);stroke:var(--wall);stroke-width:1.5}
-.scenesvg .ht{font:700 11px var(--display);fill:var(--temp)} .scenesvg .hh{font:700 9.5px var(--display);fill:var(--hum)}
-.scenesvg .badge circle{fill:var(--bad)} .scenesvg .badge text{font:700 13px var(--display);fill:#fff}
-.scene:hover .roof,.scene:focus-visible .roof{fill:var(--roof-hi)}
-.scenecap{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin-top:-6px}
-.ltiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.ltile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;text-align:left;min-height:0;font-weight:400;color:var(--ink);min-width:0}
-.ltl{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted);font-weight:600}
-.lti{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.ltile.t .lti{color:var(--temp)} .ltile.h .lti{color:var(--hum)}
-.ltv{font-family:var(--display);font-weight:700;font-size:2rem;line-height:1.05;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:4px}
-.ltv small{font-size:.85rem;font-weight:600;color:var(--muted)}
-.ltile.t .ltv{color:var(--temp)} .ltile.h .ltv{color:var(--hum)}
-.lts{font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ltile.alert .lts,.ltile.rainy .lts{color:var(--bad);font-weight:600}
-.larrow{width:20px;height:20px;align-self:center;fill:var(--ink);margin-left:2px}
-.lsrc{margin:-4px 0 0;text-align:right}
+.scenesvg .ht{font-weight:700;font-size:15px;fill:var(--temp)} .scenesvg .hh{font-weight:700;font-size:11.5px;fill:var(--hum)}
+.scenesvg .badge circle{fill:var(--bad)} .scenesvg .badge text{font-weight:700;font-size:13px;fill:#fff}
+.scenesvg .si{fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.scenesvg .si.t{stroke:var(--temp)} .scenesvg .si.h{stroke:var(--hum)}
+.scenesvg .sl{font-size:10.5px;font-weight:600;fill:var(--muted);letter-spacing:.04em}
+.scenesvg .sv{font-weight:700;font-size:26px;fill:var(--ink);font-variant-numeric:tabular-nums}
+.scenesvg .sv.t{font-size:30px;fill:var(--temp)} .scenesvg .sv.h{fill:var(--hum)}
+.scenesvg .su{font-size:11px;font-weight:600;fill:var(--muted)}
+.scenesvg .ss{font-family:var(--body);font-size:10.5px;fill:var(--muted)} .scenesvg .ss.hi{fill:var(--bad);font-weight:700}
+.scenesvg .warr{fill:var(--ink)}
+.scenesvg .aq2 text{font-family:var(--body);font-size:11px;font-weight:700} .scenesvg .aq2.ok{fill:var(--ok)} .scenesvg .aq2.warn{fill:var(--warn)} .scenesvg .aq2.bad{fill:var(--bad)}
+.scenesvg .hit{cursor:pointer;outline:none} .scenesvg .hitbox{fill:transparent}
+.scenesvg .hit:focus-visible .hitbox{stroke:var(--hum);stroke-width:2;rx:8}
+.scenesvg .house2:hover .roof{fill:var(--roof-hi)}
+.scenecap{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:space-between;margin-top:-4px}
+.scenecap .due{color:var(--warn);font-weight:600}
 .mini{gap:6px} .mini h3{font-size:.95rem}
 #miniChart{height:250px}
 .hausbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:-12px}
@@ -402,7 +402,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-06 20:00</p>
+    <p class="num">App-Version 2026-11-06 20:15</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
   </div>
@@ -1535,44 +1535,48 @@ function todayMinMax(){ var H=state.demo?histOut():(state.naOutHist&&state.naOut
   var start=startOfDay(Date.now()), mn=null, mx=null; for(var i=lowerBound(H.ts,start);i<H.ts.length;i++){ var v=H.t[i]; if(v==null) continue; if(mn==null||v<mn) mn=v; if(mx==null||v>mx) mx=v; } return mn==null?null:{min:mn,max:mx}; }
 function renderLanding(){
   var box=$('#landing'); if(!box) return; box.textContent='';
-  var d=landingData(), due=0;
+  var d=landingData()||{indoor:[]}, due=0;
   state.sensors.forEach(function(s){ if(s.hidden) return; var r=airingNeed(s,null); if(r&&r.score>0) due++; });
-  // Szene
-  var ind=d&&d.indoor&&d.indoor[0], wrap=el('button','scene'); wrap.type='button'; wrap.setAttribute('aria-label','Haus öffnen: alle Räume'+(due?', '+due+' Räume sollten gelüftet werden':''));
-  var aq=ind&&ind.co2?airQuality(ind.co2):null;
-  wrap.innerHTML='<svg viewBox="0 34 360 166" aria-hidden="true" class="scenesvg">'
-   +'<path class="hill2" d="M0 158 Q110 118 230 146 T360 138 V200 H0Z"/>'
-   +'<path class="hill" d="M0 168 Q95 142 190 156 T360 150 V200 H0Z"/>'
-   +'<g class="tree"><rect class="trunk" x="279" y="112" width="9" height="46" rx="2"/><circle cx="283" cy="98" r="27"/><circle cx="263" cy="112" r="17"/><circle cx="303" cy="113" r="17"/></g>'
-   +'<g class="bush"><circle cx="214" cy="158" r="9"/><circle cx="226" cy="156" r="11"/></g>'
-   +'<g class="hs">'
-   +'<rect class="chim" x="148" y="52" width="11" height="26"/>'
-   +'<path class="roof" d="M52 100 L122 46 L192 100 Z"/>'
-   +'<rect class="body" x="64" y="98" width="116" height="62"/>'
-   +'<rect class="win" x="74" y="108" width="20" height="16"/><rect class="win" x="150" y="108" width="20" height="16"/>'
-   +'<rect class="door" x="114" y="128" width="16" height="32" rx="1"/>'
-   +(ind?'<text class="ht" x="122" y="117" text-anchor="middle">'+esc(fmt1(ind.t))+' °C</text><text class="hh" x="122" y="127" text-anchor="middle">'+esc(Math.round(ind.h))+' %</text>':'')
-   +'</g>'
-   +(due?'<g class="badge"><circle cx="182" cy="62" r="14"/><text x="182" y="66.5" text-anchor="middle">'+due+'</text></g>':'')
+  var ind=d.indoor&&d.indoor[0], aq=ind&&ind.co2?airQuality(ind.co2):null, mm=d.out?todayMinMax():null;
+  var raining=d.rain&&((d.rain.now!=null&&d.rain.now>0)||(d.rain.h1!=null&&d.rain.h1>0.1)), gustHi=d.wind&&d.wind.gust!=null&&d.wind.gust>=40;
+  function icon(key,x,y,cls){ return '<g class="si '+(cls||'')+'" transform="translate('+x+' '+y+') scale(.8)">'+LI[key].split('|').map(function(p){ return '<path d="'+p+'"/>'; }).join('')+'</g>'; }
+  var noNa=!d.out&&!d.wind&&!d.rain;
+  var svg='<svg viewBox="0 0 360 250" class="scenesvg" role="img" aria-label="Haus mit aktuellen Wetterwerten">'
+   +'<path class="hill2" d="M0 196 Q110 174 230 190 T360 184 V250 H0Z"/>'
+   +'<path class="hill" d="M0 206 Q95 190 190 199 T360 195 V250 H0Z"/>'
+   +'<g class="tree"><rect class="trunk" x="298" y="152" width="10" height="56" rx="2"/><circle cx="303" cy="138" r="30"/><circle cx="281" cy="154" r="19"/><circle cx="325" cy="155" r="19"/></g>'
+   +'<g class="bush"><circle cx="208" cy="204" r="9"/><circle cx="221" cy="202" r="11"/></g>'
+   // Außen
+   +'<g class="hit" data-go="x-out" tabindex="0" role="button" aria-label="Außentemperatur, Verlauf öffnen">'+icon('therm',12,6,'t')+'<text class="sl" x="34" y="20">Außen</text>'
+   +'<text class="sv t" x="14" y="56">'+(d.out?esc(fmt1(d.out.t)):'–')+'<tspan class="su" dx="2">°C</tspan></text>'
+   +'<text class="ss" x="14" y="72">'+(d.out?esc(Math.round(d.out.h))+' % · '+esc(fmt1(absHum(d.out.t,d.out.h)))+' g/m³':'nicht aktuell')+'</text>'
+   +(mm?'<text class="ss" x="14" y="85">heute '+esc(fmt1(mm.min))+' / '+esc(fmt1(mm.max))+' °C</text>':'')+'<rect class="hitbox" x="6" y="2" width="114" height="90"/></g>'
+   // Wind
+   +'<g class="hit" data-go="x-wind" tabindex="0" role="button" aria-label="Wind, Verlauf öffnen">'+icon('wind',130,6)+'<text class="sl" x="152" y="20">Wind</text>'
+   +'<text class="sv" x="132" y="56">'+(d.wind&&d.wind.strength!=null?esc(Math.round(d.wind.strength)):'–')+'<tspan class="su" dx="2">km/h</tspan></text>'
+   +(d.wind&&d.wind.angle!=null?'<path class="warr" d="M12 3 L18 19 L12 15 L6 19 Z" transform="translate('+(d.wind.strength>=10?200:190)+' 36) scale(.85) rotate('+((d.wind.angle+180)%360)+' 12 12)"/>':'')
+   +'<text class="ss'+(gustHi?' hi':'')+'" x="132" y="72">'+(d.wind?(d.wind.gust!=null?'Böen '+esc(Math.round(d.wind.gust)):'')+(d.wind.angle!=null?' · aus '+esc(windDir(d.wind.angle)):''):'nicht aktuell')+'</text><rect class="hitbox" x="124" y="2" width="112" height="90"/></g>'
+   // Regen
+   +'<g class="hit" data-go="x-rain" tabindex="0" role="button" aria-label="Regen, Verlauf öffnen">'+icon('rain',246,6,'h')+'<text class="sl" x="268" y="20">Regen</text>'
+   +'<text class="sv h" x="248" y="56">'+(d.rain&&d.rain.h24!=null?esc(fmt1(d.rain.h24)):'–')+'<tspan class="su" dx="2">mm</tspan></text>'
+   +'<text class="ss'+(raining?' hi':'')+'" x="248" y="72">'+(d.rain?(raining?'es regnet · '+esc(fmt1(d.rain.h1||0))+' mm/h':'heute · gerade trocken'):'nicht aktuell')+'</text><rect class="hitbox" x="240" y="2" width="116" height="90"/></g>'
+   // Haus
+   +'<g class="hit house2" data-go="haus" tabindex="0" role="button" aria-label="Haus öffnen: alle Räume'+(due?', '+due+' Räume lüften':'')+'">'
+   +'<rect class="chim" x="136" y="100" width="11" height="26"/><path class="roof" d="M34 148 L108 92 L182 148 Z"/><rect class="body" x="46" y="146" width="124" height="66"/>'
+   +'<rect class="win" x="56" y="156" width="20" height="15"/><rect class="win" x="140" y="156" width="20" height="15"/><rect class="door" x="100" y="190" width="16" height="22" rx="1"/>'
+   +(ind?'<text class="ht" x="108" y="168" text-anchor="middle">'+esc(fmt1(ind.t))+' °C</text><text class="hh" x="108" y="183" text-anchor="middle">'+esc(Math.round(ind.h))+' %</text>':'<text class="hh" x="108" y="176" text-anchor="middle">Räume</text>')
+   +(due?'<g class="badge"><circle cx="178" cy="108" r="13"/><text x="178" y="112.5" text-anchor="middle">'+due+'</text></g>':'')
+   +(aq?'<g class="aq2 '+aq.cls+'"><circle cx="'+(108-58)+'" cy="231" r="4"/><text x="'+(108-50)+'" y="235">'+esc(aq.txt)+' · '+esc(Math.round(ind.co2).toLocaleString('de-DE'))+' ppm</text></g>':'')
+   +'<rect class="hitbox" x="30" y="88" width="156" height="152"/></g>'
    +'</svg>';
-  wrap.addEventListener('click',function(){ showTab('haus'); });
+  var scene=el('div','scene'); scene.innerHTML=svg;
+  scene.querySelectorAll('[data-go]').forEach(function(gEl){ var go=function(){ var k=gEl.getAttribute('data-go'); if(k==='haus') showTab('haus'); else { state.sel=k; showTab('verlauf'); } };
+    gEl.addEventListener('click',go); gEl.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } }); });
+  box.appendChild(scene);
   var cap=el('div','scenecap');
-  if(ind) cap.appendChild(el('span','pill '+(aq?aq.cls:'ok'),(ind.name||'Innen')+': '+(aq?aq.txt:'')+(ind.co2?' · '+Math.round(ind.co2).toLocaleString('de-DE')+' ppm':'')));
-  cap.appendChild(el('span','small '+(due?'':'muted'),due?(due===1?'1 Raum':due+' Räume')+' lüften – Haus antippen':'Haus antippen für alle Räume'));
-  box.appendChild(wrap); box.appendChild(cap);
-  // Kacheln
-  var tiles=el('div','ltiles');
-  if(!d||(!d.out&&!d.wind&&!d.rain)){ tiles.appendChild(el('p','small muted',naConfigured()?'Gerade keine aktuellen Netatmo-Werte. Unter Einstellungen → Netatmo „Jetzt abrufen“.':'Für die Außenwerte unter Einstellungen → Netatmo die Wetterstation verbinden.')); box.appendChild(tiles); renderMini(); return; }
-  function tile(icon,label,val,unit,sub,cls,sel){ var t=el('button','ltile '+(cls||'')); t.type='button'; var hd=el('span','ltl'); hd.appendChild(iconSvg(icon,'lti')); hd.appendChild(document.createTextNode(label)); t.appendChild(hd);
-    var v=el('span','ltv'); v.appendChild(document.createTextNode(val)); if(unit) v.appendChild(el('small',null,unit)); t.appendChild(v); if(sub) t.appendChild(el('span','lts',sub));
-    t.addEventListener('click',function(){ state.sel=sel; showTab('verlauf'); }); tiles.appendChild(t); return t; }
-  if(d.out){ var mm=todayMinMax(); tile('therm','Temperatur',fmt1(d.out.t),'°C',mm?'heute '+fmt1(mm.min)+' bis '+fmt1(mm.max)+' °C':'','t','x-out');
-    tile('drop','Luftfeuchte',String(Math.round(d.out.h)),'%',fmt1(absHum(d.out.t,d.out.h))+' g/m³ Wasser','h','x-out'); }
-  if(d.wind){ var wt=tile('wind','Wind',d.wind.strength!=null?String(Math.round(d.wind.strength)):'–','km/h',(d.wind.gust!=null?'Böen '+Math.round(d.wind.gust):'')+(d.wind.angle!=null?' · aus '+windDir(d.wind.angle):''),d.wind.gust>=40?'alert':'','x-wind');
-    if(d.wind.angle!=null){ var ns='http://www.w3.org/2000/svg', a=document.createElementNS(ns,'svg'); a.setAttribute('viewBox','0 0 24 24'); a.setAttribute('class','larrow'); var p=document.createElementNS(ns,'path'); p.setAttribute('d','M12 3 L18 19 L12 15 L6 19 Z'); p.setAttribute('transform','rotate('+((d.wind.angle+180)%360)+' 12 12)'); a.appendChild(p); wt.querySelector('.ltv').appendChild(a); } }
-  if(d.rain){ var raining=(d.rain.now!=null&&d.rain.now>0)||(d.rain.h1!=null&&d.rain.h1>0.1); tile('rain','Regen heute',d.rain.h24!=null?fmt1(d.rain.h24):'–','mm',raining?'es regnet · '+fmt1(d.rain.h1||0)+' mm/h':'gerade trocken',raining?'h rainy':'h','x-rain'); }
-  box.appendChild(tiles);
-  if(!d.demo){ var ages=[d.out,d.wind,d.rain].filter(Boolean).map(function(x){return x.ts;}); if(ages.length) box.appendChild(el('p','small muted lsrc','Netatmo · '+ageText(Math.min.apply(null,ages)))); }
+  cap.appendChild(el('span','small '+(due?'due':'muted'),due?(due===1?'1 Raum sollte':due+' Räume sollten')+' gelüftet werden – Haus antippen':'Haus antippen für alle Räume'));
+  if(!state.demo){ var ages=[d.out,d.wind,d.rain].filter(Boolean).map(function(x){return x.ts;}); cap.appendChild(el('span','small muted',ages.length?'Netatmo · '+ageText(Math.min.apply(null,ages)):(naConfigured()?'Gerade keine aktuellen Netatmo-Werte':'Netatmo unter Einstellungen verbinden'))); }
+  box.appendChild(cap);
   renderMini();
 }
 var miniSpec=null;
