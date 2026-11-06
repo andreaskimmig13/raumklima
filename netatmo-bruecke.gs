@@ -56,6 +56,15 @@ function doGet(e) {
         else if (m.type === 'NAModule3') st.rain = { id: m._id, now: num_(d.Rain), h1: num_(d.sum_rain_1), h24: num_(d.sum_rain_24), ts: ts, battery: m.battery_percent };
         else if (m.type === 'NAModule4') st.indoor.push(indoor_(dev._id, m._id, m.module_name || 'Innenmodul', d, m.reachable !== false, m.battery_percent));
       });
+      if (e.parameter.archive !== undefined) {
+        // Tageswerte für den gesamten verfügbaren Zeitraum (oder ab „archive“ = Unix-Sekunden)
+        var since = Math.max(parseInt(e.parameter.archive, 10) || 0, dev.date_setup || 0);
+        st.archive = [];
+        st.indoor.forEach(function (ind) { st.archive.push({ key: 'na-' + ind.id, kind: 'indoor', rows: daily_(dev._id, ind.module, 'temperature,min_temp,max_temp,humidity,co2', since) }); });
+        if (st.outdoor) st.archive.push({ key: 'x-out', kind: 'outdoor', rows: daily_(dev._id, st.outdoor.id, 'temperature,min_temp,max_temp,humidity', since) });
+        if (st.rain) st.archive.push({ key: 'x-rain', kind: 'rain', rows: daily_(dev._id, st.rain.id, 'sum_rain', since) });
+        if (st.wind) st.archive.push({ key: 'x-wind', kind: 'wind', rows: daily_(dev._id, st.wind.id, 'windstrength,guststrength', since) });
+      }
       if (days) {
         var begin = Math.floor(Date.now() / 1000) - days * 86400;
         st.indoor.forEach(function (ind) {
@@ -90,6 +99,22 @@ function measure_(devId, modId, types, begin, scale) {
   } catch (e) {
     return { error: String(e.message || e) };
   }
+}
+
+function daily_(devId, modId, types, since) {
+  var out = [], begin = since, now = Math.floor(Date.now() / 1000);
+  for (var guard = 0; guard < 12 && begin < now; guard++) {
+    var params = { device_id: devId, scale: '1day', type: types, date_begin: String(begin), optimize: 'false', real_time: 'false', limit: '1024' };
+    if (modId) params.module_id = modId;
+    var body;
+    try { body = api_('getmeasure', params) || {}; } catch (e) { out.push({ error: String(e.message || e) }); break; }
+    var keys = Object.keys(body).map(Number).sort(function (a, b) { return a - b; });
+    if (!keys.length) break;
+    keys.forEach(function (ts) { out.push([ts * 1000].concat(body[ts])); });
+    begin = keys[keys.length - 1] + 3600;
+    if (keys.length < 1000) break;
+  }
+  return out;
 }
 
 function api_(path, params) {

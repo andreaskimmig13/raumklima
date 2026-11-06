@@ -18,7 +18,7 @@
   --ok:#2c7a4c; --warn:#a86a12; --bad:#b03c2a;
   --ok-bg:#e3f2e9; --warn-bg:#fbefdc; --bad-bg:#fbe4df;
   --btn-ink:#ffffff;
-  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf; --earth:#d9cfc3; --co2:#6b5bb5;
+  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf; --earth:#d9cfc3; --co2:#6b5bb5; --temp-soft:rgba(184,98,26,.45); --line-strong:#a9b7c1;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
   --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
@@ -26,12 +26,12 @@
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; color-scheme:dark}}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; --temp-soft:rgba(238,160,87,.45); --line-strong:#4a5c69; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; color-scheme:dark}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; --co2:#ab9cf0; --temp-soft:rgba(238,160,87,.45); --line-strong:#4a5c69; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 48px}
@@ -204,6 +204,13 @@ header.top .row{flex-wrap:nowrap;gap:6px}
 .aq{display:flex;flex-direction:column;gap:0;margin-top:3px;padding:3px 6px;border-radius:6px;font-size:.7rem;line-height:1.25;width:fit-content;max-width:100%}
 .aq b{font-weight:700;font-size:.74rem}
 .aq.ok{background:var(--ok-bg);color:var(--ok)} .aq.warn{background:var(--warn-bg);color:var(--warn)} .aq.bad{background:var(--bad-bg);color:var(--bad)}
+.monthbox{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+.monthbox .chips{margin-bottom:0}
+#monthChart{height:200px}
+table.cmp.mtab{min-width:0}
+table.cmp.mtab th,table.cmp.mtab td{white-space:nowrap;padding:8px 7px}
+table.cmp tr.more{display:none} table.cmp.showall tr.more{display:table-row}
+table.cmp td.up{color:var(--temp)} table.cmp td.down{color:var(--hum)}
 footer{font-size:.82rem;color:var(--muted)}
 </style>
 
@@ -257,12 +264,15 @@ footer{font-size:.82rem;color:var(--muted)}
         <button type="button" data-range="7" aria-pressed="true">7 T</button>
         <button type="button" data-range="14" aria-pressed="false">14 T</button>
         <button type="button" data-range="30" aria-pressed="false">30 T</button>
+        <button type="button" data-range="365" aria-pressed="false" class="longr" hidden>1 J</button>
+        <button type="button" data-range="0" aria-pressed="false" class="longr" hidden>Alles</button>
       </div>
     </div>
     <div class="panel">
       <div class="chartbox"><canvas id="chart" aria-label="Verlauf von Temperatur und Luftfeuchte"></canvas></div>
       <div class="legend" id="legend"></div>
       <div class="stats" id="stats"></div>
+      <div class="monthbox" id="monthBox" hidden></div>
       <div class="twocol" id="histLists">
         <div><h3>Feuchtephasen</h3><div class="list" id="phaseList"></div></div>
         <div><h3>Lüftungen</h3><div class="list" id="airList"></div></div>
@@ -616,7 +626,7 @@ function makeDemo(now){
 /* ===== Oberfläche, Bluetooth, Speicher ===== */
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
-var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null};
+var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null, naDay:{}};
 var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true, naUrl:'', naKey:''};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
@@ -664,6 +674,7 @@ async function loadAll(){
   for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i]; state.series[s.id]=bucketsToSeries((await safe(dbBucketsFor(s.id)))||[]); }
   var o=await safe(dbGet('meta','outdoor')); if(o) state.outdoor=o;
   var nm=await safe(dbGet('meta','netatmo')); if(nm&&nm.na) state.na=nm.na; var nh=await safe(dbGet('meta','naout')); if(nh) state.naOutHist=nh;
+  var na2=await safe(dbGet('meta','naarch')); if(na2&&na2.keys){ for(var ak=0;ak<na2.keys.length;ak++){ var Dd=await safe(dbGet('meta','nd:'+na2.keys[ak])); if(Dd){ Dd.kind=Dd.kind||kindOfKey(na2.keys[ak]); state.naDay[na2.keys[ak]]=Dd; } } }
   var nw=await safe(dbGet('meta','nawind')); if(nw) state.naWindHist=nw; var nr=await safe(dbGet('meta','narain')); if(nr) state.naRainHist=nr;
 }
 async function safe(p){ try{ return await p; }catch(e){ return null; } }
@@ -900,15 +911,15 @@ async function fetchNetatmo(force){
   return na;
 }
 function stripHist(o){ var c={}; Object.keys(o).forEach(function(k){ if(k!=='history') c[k]=o[k]; }); return c; }
-async function mergeHist(key,fields,rows){
+async function mergeHist(key,fields,rows,keepDays){
   var old=(await safe(dbGet('meta',key)))||{k:key,ts:[]}, map={};
   old.ts.forEach(function(ts,i){ map[ts]=fields.map(function(f){ return old[f]?old[f][i]:null; }); });
   rows.forEach(function(row){ if(row[1]==null) return; map[row[0]]=fields.map(function(f,ix){ return row[ix+1]==null?null:row[ix+1]; }); });
-  var keys=Object.keys(map).map(Number).filter(function(ts){ return ts>Date.now()-120*DAY; }).sort(function(a,b){return a-b;});
+  var keys=Object.keys(map).map(Number).filter(function(ts){ return ts>Date.now()-(keepDays||120)*DAY; }).sort(function(a,b){return a-b;});
   var hist={k:key,ts:keys}; fields.forEach(function(f,ix){ hist[f]=keys.map(function(k){ return map[k][ix]; }); });
   await safe(dbPut('meta',hist)); return hist;
 }
-async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!r.skipped) logLine('Netatmo: '+r.indoor+' Innenmodul(e)'+(r.outdoor?', Außenmodul':'')+(r.rain?', Regen':'')+(r.wind?', Wind':'')+' aktualisiert.'); return r; }
+async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!r.skipped&&!r.error) fetchArchive(false); if(r&&!r.skipped) logLine('Netatmo: '+r.indoor+' Innenmodul(e)'+(r.outdoor?', Außenmodul':'')+(r.rain?', Regen':'')+(r.wind?', Wind':'')+' aktualisiert.'); return r; }
   catch(e){ logLine('Netatmo-Fehler: '+e.message); state.naErr=e.message; return {error:e.message}; } }
 
 /* --- Außenwetter (Open-Meteo, ohne Schlüssel) --- */
@@ -1046,7 +1057,7 @@ function renderTips(){
   var box=$('#tips'); box.textContent=''; var on=outdoorNow(), ctx={outNow:on?on.t:null}, groups=[], fine=[];
   var oa=outdoorAtFn(), rank={bad:0,warn:1,ok:2}, cmp=$('#cmpBody'); cmp.textContent='';
   state.sensors.forEach(function(s){ var S=state.series[s.id]; if(!S||!S.ts.length) return; var to=S.ts[S.ts.length-1];
-    var A=analyze(s,S,to-state.range*DAY,to,state.settings,oa), tips=recommendations(s,A,ctx);
+    var A=analyze(s,S,to-shortRange()*DAY,to,state.settings,oa), tips=recommendations(s,A,ctx);
     var issues=tips.filter(function(t){ return t.sev!=='ok'; }).sort(function(a,b){ return rank[a.sev]-rank[b.sev]; });
     if(issues.length) groups.push({s:s,tips:issues,worst:rank[issues[0].sev],n:issues.length}); else fine.push(s.name);
     var perDay=A.airDays>0?A.events.length/A.airDays:null, tr=el('tr');
@@ -1055,7 +1066,7 @@ function renderTips(){
     var st=el('td'); st.appendChild(el('span','pill '+sev,{ok:'gut',warn:issues.length+' Hinweis'+(issues.length>1?'e':''),bad:'handeln'}[sev])); tr.appendChild(st);
     cmp.appendChild(tr); });
   groups.sort(function(a,b){ return a.worst-b.worst||b.n-a.n; });
-  $('#tipsHint').textContent='Grundlage: letzte '+(state.range===1?'24 Stunden':state.range+' Tage');
+  $('#tipsHint').textContent='Grundlage: letzte '+(shortRange()===1?'24 Stunden':shortRange()+' Tage');
   $('#cmpHint').textContent=$('#tipsHint').textContent;
   if(!groups.length&&!fine.length){ box.appendChild(el('p','muted','Sobald Messwerte vorliegen, stehen hier Hinweise je Raum.')); return; }
   groups.forEach(function(g){ var wrap=el('div','tipgroup'); wrap.appendChild(el('h3','tiproom',g.s.name));
@@ -1185,8 +1196,12 @@ function sliceBy(obj,keys,from,to){ var a=lowerBound(obj.ts,from), b=lowerBound(
 function meanOf(arr){ var s=0,n=0; for(var i=0;i<arr.length;i++){ if(arr[i]!=null){ s+=arr[i]; n++; } } return n?s/n:null; }
 var chartSpec=null;
 function renderAnalysis(){
-  document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); });
-  var stats=$('#stats'), pl=$('#phaseList'), al=$('#airList'), two=$('#histLists'); stats.textContent=''; pl.textContent=''; al.textContent='';
+  var canLong=hasDaily(state.sel), isLong=state.range===0||state.range>30;
+  if(isLong&&!canLong){ state.range=30; isLong=false; }
+  document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); if(b.classList.contains('longr')) b.hidden=!canLong; });
+  var stats=$('#stats'), pl=$('#phaseList'), al=$('#airList'), two=$('#histLists'); stats.textContent=''; pl.textContent=''; al.textContent=''; $('#monthBox').hidden=true;
+  if(isLong){ two.hidden=true; var nm=SPECIAL[state.sel]||((state.sensors.find(function(x){return x.id===state.sel;})||{}).name)||''; $('#histTitle').textContent='Verlauf: '+nm+' · Tageswerte'; return renderDaily(stats); }
+  if(canLong){ var mb=$('#monthBox'); mb.hidden=false; mb.textContent=''; var hint=el('p','small muted','Für Netatmo gibt es Tageswerte seit Einrichtung der Station. Mit „1 J“ oder „Alles“ siehst du den Langzeitverlauf und den Vergleich zum Vorjahresmonat.'); hint.style.margin='0'; mb.appendChild(hint); }
   var cT=cssVar('--temp'), cH=cssVar('--hum'), cC=cssVar('--co2'), cW=cssVar('--ink'), cG=cssVar('--muted');
   if(SPECIAL[state.sel]){ two.hidden=true; $('#histTitle').textContent='Verlauf: '+SPECIAL[state.sel]; return renderSpecial(stats,{cT:cT,cH:cH,cW:cW,cG:cG}); }
   two.hidden=false;
@@ -1269,6 +1284,130 @@ function setLegend(items){ var box=$('#legend'); box.textContent='';
     else i.style.background='var('+k+')';
     sp.appendChild(i); sp.appendChild(document.createTextNode(it[1])); box.appendChild(sp); }); }
 
+/* --- Netatmo-Archiv: Tageswerte, Langzeit und Vorjahresvergleich --- */
+var DAYFIELDS={indoor:['tavg','tmin','tmax','h','c'],outdoor:['tavg','tmin','tmax','h'],rain:['mm'],wind:['s','g']};
+function kindOfKey(k){ return k==='x-out'?'outdoor':(k==='x-rain'?'rain':(k==='x-wind'?'wind':'indoor')); }
+function hasDaily(k){ var D=state.naDay&&state.naDay[k]; return !!(D&&D.ts&&D.ts.length>1); }
+function shortRange(){ return (state.range===0||state.range>30)?30:state.range; }
+async function fetchArchive(force){
+  if(!naConfigured()||state.demo||state.archBusy) return;
+  var meta=(await safe(dbGet('meta','naarch')))||{k:'naarch',keys:[]};
+  if(!force && meta.at && Date.now()-meta.at<20*HOUR) return;
+  state.archBusy=true; var first=!meta.last;
+  try{
+    if(first) logLine('Lade Netatmo-Langzeitdaten (einmalig, kann eine Minute dauern) …');
+    var since=meta.last?Math.floor((meta.last-3*DAY)/1000):0;
+    var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+'&archive='+since;
+    var r=await withTimeout(fetch(url,{redirect:'follow'}),300000,'Das Netatmo-Archiv antwortet nicht.'); var j=await r.json(); if(j.error) throw new Error(j.error);
+    var last=meta.last||0, keys=meta.keys||[];
+    for(var si=0;si<(j.stations||[]).length;si++){ var arch=j.stations[si].archive||[];
+      for(var ai=0;ai<arch.length;ai++){ var a=arch[ai]; var rows=(a.rows||[]).filter(function(x){ return Array.isArray(x); }); if(!rows.length) continue;
+        var D=await mergeHist('nd:'+a.key,DAYFIELDS[a.kind],rows,100000); D.kind=a.kind; state.naDay[a.key]=D; await safe(dbPut('meta',D));
+        if(keys.indexOf(a.key)<0) keys.push(a.key); last=Math.max(last,rows[rows.length-1][0]); } }
+    meta.keys=keys; meta.last=last; meta.at=Date.now(); await safe(dbPut('meta',meta));
+    logLine('Netatmo-Langzeitdaten aktualisiert'+(keys.length?' ('+keys.length+' Module).':'.'));
+  }catch(e){ logLine('Netatmo-Archiv: '+e.message); }
+  finally{ state.archBusy=false; }
+  if(curTab==='verlauf'){ renderChips(); renderAnalysis(); }
+}
+function monthKey(ts){ var d=new Date(ts); return d.getFullYear()*12+d.getMonth(); }
+function monthLabel(k,long){ var d=new Date(Math.floor(k/12),k%12,1); return d.toLocaleDateString('de-DE',long?{month:'long',year:'numeric'}:{month:'short'}); }
+function aggMonths(D,kind,dayLimit){ // dayLimit: nur Tage <= Tag des Monats (für laufenden Monat)
+  var M={}, f=DAYFIELDS[kind];
+  for(var i=0;i<D.ts.length;i++){ var d=new Date(D.ts[i]); if(dayLimit&&d.getDate()>dayLimit.day&&monthKey(D.ts[i])%12===dayLimit.month) continue;
+    var k=monthKey(D.ts[i]), m=M[k]||(M[k]={n:0,sum:{},cnt:{},min:{},max:{},wet:0,days:0}); m.days++;
+    f.forEach(function(fi){ var v=D[fi][i]; if(v==null) return; m.sum[fi]=(m.sum[fi]||0)+v; m.cnt[fi]=(m.cnt[fi]||0)+1; if(m.min[fi]==null||v<m.min[fi]) m.min[fi]=v; if(m.max[fi]==null||v>m.max[fi]) m.max[fi]=v; });
+    if(kind==='rain'&&D.mm[i]!=null&&D.mm[i]>=0.2) m.wet++; }
+  return M;
+}
+var MONTH_METRICS={
+  indoor:[['tavg','Temperatur','°C',fmt1,'avg'],['h','Luftfeuchte','%',function(v){return String(Math.round(v));},'avg'],['c','CO₂','ppm',function(v){return Math.round(v).toLocaleString('de-DE');},'avg']],
+  outdoor:[['tavg','Ø Temperatur','°C',fmt1,'avg'],['tmin','Tiefstwert','°C',fmt1,'min'],['tmax','Höchstwert','°C',fmt1,'max'],['h','Ø Luftfeuchte','%',function(v){return String(Math.round(v));},'avg']],
+  rain:[['mm','Niederschlag','mm',function(v){return String(Math.round(v));},'sum'],['wet','Regentage','',function(v){return String(Math.round(v));},'wet']],
+  wind:[['s','Ø Wind','km/h',function(v){return String(Math.round(v));},'avg'],['g','Ø Böen','km/h',function(v){return String(Math.round(v));},'avg']]};
+function monthValue(m,met){ if(!m) return null; var f=met[0], how=met[4];
+  if(how==='avg') return m.cnt[f]?m.sum[f]/m.cnt[f]:null; if(how==='sum') return m.cnt[f]?m.sum[f]:null; if(how==='min') return m.min[f]; if(how==='max') return m.max[f]; if(how==='wet') return m.wet; return null; }
+var monthMetric={};
+function renderDaily(stats){
+  var key=state.sel, D=state.naDay[key], kind=D.kind||kindOfKey(key), c={cT:cssVar('--temp'),cTs:cssVar('--temp-soft'),cH:cssVar('--hum'),cC:cssVar('--co2'),cW:cssVar('--ink'),cG:cssVar('--muted')};
+  var lastTs=D.ts[D.ts.length-1], to=lastTs+DAY, from=state.range===0?D.ts[0]:Math.max(D.ts[0],to-state.range*DAY);
+  var R=sliceBy(D,DAYFIELDS[kind],from,to); if(!R.ts.length) return noSpecial(stats);
+  var gap=function(i){ return R.ts[i]-R.ts[i-1]>3*DAY; }, dfmt=function(ts){ return new Date(ts).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric',year:'2-digit'}); };
+  var span=to-from, panels=[], lg=[];
+  if(kind==='indoor'||kind==='outdoor'){
+    panels.push({label:'°C',unit:'°C',series:[{vals:R.tmax,color:c.cTs,width:1},{vals:R.tmin,color:c.cTs,width:1},{vals:R.tavg,color:c.cT}],avg:meanOf(R.tavg),fmt:fmt1,thr:kind==='outdoor'?[{v:0,label:'0 °C',color:c.cH}]:null});
+    panels.push({label:'% rF',unit:'%',series:[{vals:R.h,color:c.cH}],avg:meanOf(R.h),fmt:function(v){return String(Math.round(v));}});
+    lg=[['--temp','Tagesmittel'],['--temp-soft','Tagesminimum und -maximum'],['--hum','Luftfeuchte (Tagesmittel)']];
+    if(kind==='indoor'&&meanOf(R.c)!=null){ panels.push({label:'ppm CO₂',unit:'ppm',series:[{vals:R.c,color:c.cC}],avg:meanOf(R.c),thr:[{v:1000,label:'1.000',color:cssVar('--warn')}],fmt:function(v){return Math.round(v).toLocaleString('de-DE');},minLo:400}); lg.push(['--co2','CO₂ (Tagesmittel)']); }
+    chartSpec={from:from,to:to,ts:R.ts,gap:gap,panels:panels,hover:function(i){ return dfmt(R.ts[i])+'   Ø '+(R.tavg[i]!=null?fmt1(R.tavg[i]):'–')+' °C ('+(R.tmin[i]!=null?fmt1(R.tmin[i]):'–')+' bis '+(R.tmax[i]!=null?fmt1(R.tmax[i]):'–')+')   '+(R.h[i]!=null?Math.round(R.h[i])+' %':'')+(R.c&&R.c[i]?'   '+Math.round(R.c[i])+' ppm':''); }};
+    var iMin=-1,iMax=-1; for(var i=0;i<R.ts.length;i++){ if(R.tmin[i]!=null&&(iMin<0||R.tmin[i]<R.tmin[iMin])) iMin=i; if(R.tmax[i]!=null&&(iMax<0||R.tmax[i]>R.tmax[iMax])) iMax=i; }
+    stats.appendChild(statEl(fmt1(meanOf(R.tavg))+' °C','Ø Temperatur'));
+    if(iMin>=0) stats.appendChild(statEl(fmt1(R.tmin[iMin])+' °C','tiefster Wert, '+new Date(R.ts[iMin]).toLocaleDateString('de-DE')));
+    if(iMax>=0) stats.appendChild(statEl(fmt1(R.tmax[iMax])+' °C','höchster Wert, '+new Date(R.ts[iMax]).toLocaleDateString('de-DE')));
+    if(kind==='outdoor'){ stats.appendChild(statEl(String(R.tmin.filter(function(v){return v!=null&&v<0;}).length),'Frosttage')); stats.appendChild(statEl(String(R.tmax.filter(function(v){return v!=null&&v>=25;}).length),'Sommertage (ab 25 °C)')); }
+    else { stats.appendChild(statEl(Math.round(meanOf(R.h))+' %','Ø Luftfeuchte')); if(meanOf(R.c)!=null) stats.appendChild(statEl(Math.round(meanOf(R.c)).toLocaleString('de-DE')+' ppm','Ø CO₂')); }
+  } else if(kind==='wind'){
+    panels.push({label:'km/h',unit:'km/h',series:[{vals:R.g,color:c.cG,width:1.1,fill:true},{vals:R.s,color:c.cW,width:1.6}],avg:meanOf(R.s),fmt:function(v){return String(Math.round(v));},minLo:0,tall:true});
+    lg=[['--ink','Wind (Tagesmittel)'],['--muted','Böen (Tagesmittel)'],['avg','Durchschnitt']];
+    chartSpec={from:from,to:to,ts:R.ts,gap:gap,panels:panels,hover:function(i){ return dfmt(R.ts[i])+'   '+(R.s[i]!=null?Math.round(R.s[i]):'–')+' km/h, Böen '+(R.g[i]!=null?Math.round(R.g[i]):'–'); }};
+    var wi=-1; for(var k=0;k<R.ts.length;k++){ if(R.s[k]!=null&&(wi<0||R.s[k]>R.s[wi])) wi=k; }
+    stats.appendChild(statEl(Math.round(meanOf(R.s))+' km/h','Ø Wind')); if(wi>=0) stats.appendChild(statEl(Math.round(R.s[wi])+' km/h','windigster Tag, '+new Date(R.ts[wi]).toLocaleDateString('de-DE')));
+  } else {
+    var monthly=span>150*DAY, bucket={}, bars=[];
+    for(var j=0;j<R.ts.length;j++){ var v=R.mm[j]||0, bk=monthly?monthKey(R.ts[j]):R.ts[j]; bucket[bk]=(bucket[bk]||0)+v; }
+    Object.keys(bucket).map(Number).sort(function(a,b){return a-b;}).forEach(function(bk){ var f0=monthly?new Date(Math.floor(bk/12),bk%12,1).getTime():bk, t0=monthly?new Date(Math.floor(bk/12),bk%12+1,1).getTime():bk+DAY; bars.push({from:f0,to:t0,v:Math.round(bucket[bk]*10)/10,mk:monthly?bk:null}); });
+    var sum=R.mm.reduce(function(a,v){return a+(v||0);},0), wet=R.mm.filter(function(v){return v!=null&&v>=0.2;}).length, wd=-1; for(var q=0;q<R.ts.length;q++){ if(R.mm[q]!=null&&(wd<0||R.mm[q]>R.mm[wd])) wd=q; }
+    panels.push({label:monthly?'mm pro Monat':'mm pro Tag',unit:'mm',bars:bars,color:c.cH,fmt:fmt1,minLo:0,tall:true,avg:bars.length?sum/bars.length:null});
+    lg=[['--hum',monthly?'Niederschlag pro Monat':'Niederschlag pro Tag'],['avg','Durchschnitt']];
+    chartSpec={from:from,to:to,ts:[],panels:panels,hoverBar:function(b){ return (b.mk!=null?monthLabel(b.mk,true):new Date(b.from).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric',year:'2-digit'}))+'   '+fmt1(b.v)+' mm'; }};
+    var years=span/(365*DAY);
+    stats.appendChild(statEl(Math.round(sum).toLocaleString('de-DE')+' mm','Summe')); if(years>1.2) stats.appendChild(statEl(Math.round(sum/years).toLocaleString('de-DE')+' mm','Ø pro Jahr'));
+    stats.appendChild(statEl(String(wet),'Regentage')); if(wd>=0) stats.appendChild(statEl(fmt1(R.mm[wd])+' mm','nassester Tag, '+new Date(R.ts[wd]).toLocaleDateString('de-DE')));
+  }
+  lg.push(['avg','Durchschnitt']); setLegend(lg.filter(function(x,i,a){ return a.findIndex(function(y){return y[0]===x[0];})===i; }));
+  stats.appendChild(statEl(new Date(D.ts[0]).toLocaleDateString('de-DE'),'Daten seit'));
+  drawChart(); renderMonthCompare(D,kind);
+}
+function renderMonthCompare(D,kind){
+  var box=$('#monthBox'); box.hidden=false; box.textContent='';
+  var mets=MONTH_METRICS[kind], key=state.sel; if(!monthMetric[key]) monthMetric[key]=mets[0][0]; var met=mets.find(function(m){return m[0]===monthMetric[key];})||mets[0];
+  var head=el('div','sechead'); head.appendChild(el('h3',null,'Monatsvergleich mit dem Vorjahr')); box.appendChild(head);
+  if(mets.length>1){ var ch=el('div','chips'); mets.forEach(function(m){ var b=el('button',null,m[1]); b.type='button'; b.setAttribute('aria-pressed',String(m[0]===met[0])); b.addEventListener('click',function(){ monthMetric[key]=m[0]; renderMonthCompare(D,kind); }); ch.appendChild(b); }); box.appendChild(ch); }
+  var now=new Date(), curK=now.getFullYear()*12+now.getMonth();
+  var M=aggMonths(D,kind,null), Mpart=aggMonths(D,kind,{day:now.getDate(),month:now.getMonth()});
+  var keys=Object.keys(M).map(Number).sort(function(a,b){return b-a;});
+  var rows=keys.map(function(k){ var cur=monthValue(M[k],met), prevSrc=(k===curK?Mpart:M)[k-12], prev=monthValue(prevSrc,met); return {k:k,cur:cur,prev:prev,partial:k===curK}; }).filter(function(r){ return r.cur!=null; });
+  if(!rows.length){ box.appendChild(el('p','small muted','Noch keine Monatswerte.')); return; }
+  var cv=el('canvas'); cv.id='monthChart'; cv.style.height='200px'; box.appendChild(cv);
+  var lg=el('div','legend'); var a1=el('span'); var i1=el('i'); i1.style.background='var(--hum)'; a1.appendChild(i1); a1.appendChild(document.createTextNode('dieses Jahr')); var a2=el('span'); var i2=el('i'); i2.style.background='var(--line-strong)'; a2.appendChild(i2); a2.appendChild(document.createTextNode('Vorjahr')); lg.appendChild(a1); lg.appendChild(a2); box.appendChild(lg);
+  requestAnimationFrame(function(){ drawMonthChart(cv,rows.slice(0,12).reverse(),met); });
+  var wrap=el('div','tablewrap'), tb=el('table','cmp mtab'), th=el('thead'), tr=el('tr');
+  ['Monat',met[1].replace('Ø ',''),'Vorjahr','Δ'].forEach(function(t){ tr.appendChild(el('th',null,t)); }); th.appendChild(tr); tb.appendChild(th);
+  var body=el('tbody'); rows.forEach(function(r,ix){ var row=el('tr'); if(ix>=12) row.className='more'; row.appendChild(el('td',null,new Date(Math.floor(r.k/12),r.k%12,1).toLocaleDateString('de-DE',{month:'short',year:'numeric'}).replace('.','')+(r.partial?' *':'')));
+    row.appendChild(el('td','num',met[3](r.cur)+(met[2]?' '+met[2]:''))); row.appendChild(el('td','num',r.prev!=null?met[3](r.prev)+(met[2]?' '+met[2]:''):'–'));
+    var dv=r.prev!=null?r.cur-r.prev:null; if(dv!=null&&/^[0,]+$/.test(met[3](Math.abs(dv)))) dv=0; var dtxt=dv==null?'–':((dv>0?'+':(dv<0?'−':'±'))+met[3](Math.abs(dv))+(met[2]?' '+met[2]:'')+(met[4]==='sum'&&r.prev>0?' ('+(dv>0?'+':'−')+Math.round(Math.abs(dv)/r.prev*100)+' %)':''));
+    row.appendChild(el('td','num'+(dv==null?'':(dv>0?' up':(dv<0?' down':''))),dtxt)); body.appendChild(row); });
+  tb.appendChild(body); wrap.appendChild(tb); box.appendChild(wrap);
+  if(rows[0]&&rows[0].partial){ var note=el('p','small muted','* laufender Monat, verglichen mit denselben Tagen des Vorjahresmonats.'); note.style.margin='0'; box.appendChild(note); }
+  if(rows.length>12){ var more=el('button',null,'Alle '+rows.length+' Monate zeigen'); more.type='button'; more.addEventListener('click',function(){ tb.classList.add('showall'); more.remove(); }); box.appendChild(more); }
+}
+function drawMonthChart(cv,rows,met){
+  var W=cv.clientWidth, H=cv.clientHeight; if(!W) return; var dpr=window.devicePixelRatio||1; cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H); var font=cssVar('--body'); g.font='11px '+font; g.textBaseline='middle';
+  var vals=[]; rows.forEach(function(r){ if(r.cur!=null) vals.push(r.cur); if(r.prev!=null) vals.push(r.prev); });
+  var vmin=Math.min.apply(null,vals), vmax=Math.max.apply(null,vals), zero=met[4]==='sum'||met[4]==='wet'||vmin<=0;
+  var lo=zero?Math.min(0,vmin):vmin-(vmax-vmin)*0.25-0.5, hi=zero?Math.max(0,vmax):vmax+(vmax-vmin)*0.1+0.2; var sc=niceScale(lo,hi,4); if(zero&&vmin>=0) sc.lo=0;
+  var L=40, top=10, bot=22, x0=L, x1=W-6, Y=function(v){ return top+(sc.hi-v)/(sc.hi-sc.lo)*(H-top-bot); };
+  g.strokeStyle=cssVar('--line'); g.fillStyle=cssVar('--muted'); g.textAlign='right';
+  for(var v=sc.lo;v<=sc.hi+1e-9;v+=sc.step){ var y=Math.round(Y(v))+.5; g.beginPath(); g.moveTo(x0,y); g.lineTo(x1,y); g.stroke(); g.fillText(sc.step>=1?Math.round(v).toLocaleString('de-DE'):fmt1(v),x0-5,y); }
+  var n=rows.length, cw=(x1-x0)/n, bw=Math.max(3,cw*0.34), y0=Y(sc.lo<=0&&sc.hi>=0?0:sc.lo);
+  rows.forEach(function(r,i){ var cx=x0+cw*i+cw/2;
+    if(r.prev!=null){ g.fillStyle=cssVar('--line-strong'); var yp=Y(r.prev); g.fillRect(cx-bw-1,Math.min(yp,y0),bw,Math.abs(y0-yp)); }
+    g.fillStyle=cssVar('--hum'); var yc=Y(r.cur); g.fillRect(cx+1,Math.min(yc,y0),bw,Math.abs(y0-yc));
+    g.fillStyle=cssVar('--muted'); g.textAlign='center'; g.fillText(monthLabel(r.k,false).replace('.',''),cx,H-10); });
+  if(sc.lo<=0&&sc.hi>=0){ g.strokeStyle=cssVar('--ink'); g.globalAlpha=.6; } else { g.strokeStyle=cssVar('--line'); } g.beginPath(); g.moveTo(x0,Math.round(y0)+.5); g.lineTo(x1,Math.round(y0)+.5); g.stroke(); g.globalAlpha=1;
+}
+
 /* --- Diagramm (Canvas) --- */
 var hoverX=null;
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
@@ -1305,8 +1444,13 @@ function drawChart(){
   spec.panels.forEach(function(p,pi){ var G=geo[pi], sc=G.sc; g.strokeStyle=line; g.fillStyle=muted; g.textAlign='right';
     for(var v=sc.lo;v<=sc.hi+1e-9;v+=sc.step){ var yy=Math.round(G.Y(v))+.5; g.beginPath(); g.moveTo(x0,yy); g.lineTo(x1,yy); g.stroke(); g.fillText(sc.step>=1?Math.round(v).toLocaleString('de-DE'):p.fmt(v),x0-6,yy); } });
   // Zeitachse
-  g.fillStyle=muted; g.textAlign='center'; var yTop=geo[0].y0, yBot=geo[geo.length-1].y1, dayStep=state.range<=1?0:(state.range<=7?1:(state.range<=14?2:5));
-  if(dayStep===0){ var d0=new Date(from); d0.setMinutes(0,0,0); for(var t=d0.getTime();t<=to;t+=HOUR){ var hh=new Date(t).getHours(); if(hh%6!==0||t<from) continue; var xx=Math.round(X(t))+.5; g.strokeStyle=line; g.beginPath(); g.moveTo(xx,yTop); g.lineTo(xx,yBot); g.stroke(); g.fillText(hh+' Uhr',xx,yBot+14); } }
+  var spanD=(to-from)/DAY;
+  g.fillStyle=muted; g.textAlign='center'; var yTop=geo[0].y0, yBot=geo[geo.length-1].y1, dayStep=spanD<=1.5?0:(spanD<=8?1:(spanD<=15?2:5));
+  if(spanD>45){ var mstep=Math.max(1,Math.ceil(46/((x1-x0)/(spanD/30.4)))); if(mstep>2&&mstep<=3) mstep=3; else if(mstep>3&&mstep<=6) mstep=6; else if(mstep>6) mstep=12;
+    var md=new Date(from); md.setDate(1); md.setHours(0,0,0,0); md.setMonth(md.getMonth()+1);
+    for(;md.getTime()<=to;md.setMonth(md.getMonth()+1)){ var mx=Math.round(X(md.getTime()))+.5; var jan=md.getMonth()===0; g.strokeStyle=line; g.globalAlpha=jan?1:.6; g.beginPath(); g.moveTo(mx,yTop); g.lineTo(mx,yBot); g.stroke(); g.globalAlpha=1;
+      if(md.getMonth()%mstep===0&&mx>x0+16&&mx<x1-16) g.fillText(jan||mstep>=12?String(md.getFullYear()):md.toLocaleDateString('de-DE',{month:'short'}).replace('.',''),mx,yBot+14); } }
+  else if(dayStep===0){ var d0=new Date(from); d0.setMinutes(0,0,0); for(var t=d0.getTime();t<=to;t+=HOUR){ var hh=new Date(t).getHours(); if(hh%6!==0||t<from) continue; var xx=Math.round(X(t))+.5; g.strokeStyle=line; g.beginPath(); g.moveTo(xx,yTop); g.lineTo(xx,yBot); g.stroke(); g.fillText(hh+' Uhr',xx,yBot+14); } }
   else { var dd=new Date(from); dd.setHours(0,0,0,0); dd.setDate(dd.getDate()+1); for(var k=0;dd.getTime()<=to;dd.setDate(dd.getDate()+1),k++){ var x=Math.round(X(dd.getTime()))+.5; g.strokeStyle=line; g.beginPath(); g.moveTo(x,yTop); g.lineTo(x,yBot); g.stroke(); if(k%dayStep===0&&x>x0+14&&x<x1-14) g.fillText(dd.toLocaleDateString('de-DE',{weekday:'short',day:'numeric'}),x,yBot+14); } }
   // Schwellen
   spec.panels.forEach(function(p,pi){ var G=geo[pi]; (p.thr||[]).forEach(function(t){ if(t.v<G.sc.lo||t.v>G.sc.hi) return; var ty=Math.round(G.Y(t.v))+.5; g.save(); g.setLineDash([5,4]); g.strokeStyle=t.color; g.globalAlpha=.75; g.beginPath(); g.moveTo(x0,ty); g.lineTo(x1,ty); g.stroke(); g.restore(); g.fillStyle=t.color; g.textAlign='right'; g.fillText(t.label,x1-2,ty-8); }); });
@@ -1399,7 +1543,7 @@ $('#btnNaSave').addEventListener('click',async function(){ var st=state.settings
   if(state.demo){ state.demo=false; state.sensors=[]; state.series={}; state.sel=null; }
   setStatus('Teste Netatmo-Verbindung …'); var r=await syncNetatmo(true); renderAll();
   if(r&&r.error) setStatus('Netatmo: '+r.error,true); else setStatus('Netatmo verbunden. Die Innenmodule stehen jetzt bei den Sensoren und können einem Stockwerk zugeordnet werden.'); });
-$('#btnNaNow').addEventListener('click',async function(){ if(!naConfigured()){ setStatus('Zuerst URL und Schlüssel eintragen.',true); return; } state.naErr=null; setStatus('Rufe Netatmo ab …'); var r=await syncNetatmo(true); renderAll(); if(r&&r.error) setStatus('Netatmo: '+r.error,true); else setStatus('Netatmo aktualisiert.'); });
+$('#btnNaNow').addEventListener('click',async function(){ if(!naConfigured()){ setStatus('Zuerst URL und Schlüssel eintragen.',true); return; } state.naErr=null; setStatus('Rufe Netatmo ab …'); var r=await syncNetatmo(true); fetchArchive(true); renderAll(); if(r&&r.error) setStatus('Netatmo: '+r.error,true); else setStatus('Netatmo aktualisiert.'); });
 $('#btnBackup').addEventListener('click',exportBackup);
 $('#fileImport').addEventListener('change',function(e){ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=''; });
 $('#btnSaveSettings').addEventListener('click',async function(){ var st=state.settings;
