@@ -53,7 +53,7 @@ function doGet(e) {
         var d = m.dashboard_data || {};
         var ts = d.time_utc ? d.time_utc * 1000 : null;
         if (m.type === 'NAModule1') st.outdoor = { id: m._id, name: m.module_name, t: num_(d.Temperature), h: num_(d.Humidity), ts: ts, battery: m.battery_percent, reachable: m.reachable !== false };
-        else if (m.type === 'NAModule2') st.wind = { id: m._id, strength: num_(d.WindStrength), angle: num_(d.WindAngle), gust: num_(d.GustStrength), gustAngle: num_(d.GustAngle), ts: ts, battery: m.battery_percent };
+        else if (m.type === 'NAModule2') st.wind = { id: m._id, name: m.module_name, strength: num_(d.WindStrength), angle: num_(d.WindAngle), gust: num_(d.GustStrength), gustAngle: num_(d.GustAngle), ts: ts, battery: m.battery_percent, reachable: m.reachable !== false, keys: Object.keys(d) };
         else if (m.type === 'NAModule3') st.rain = { id: m._id, now: num_(d.Rain), h1: num_(d.sum_rain_1), h24: num_(d.sum_rain_24), ts: ts, battery: m.battery_percent };
         else if (m.type === 'NAModule4') st.indoor.push(indoor_(dev._id, m._id, m.module_name || 'Innenmodul', d, m.reachable !== false, m.battery_percent));
       });
@@ -64,7 +64,7 @@ function doGet(e) {
         st.indoor.forEach(function (ind) { st.archive.push({ key: 'na-' + ind.id, kind: 'indoor', rows: daily_(dev._id, ind.module, 'temperature,min_temp,max_temp,humidity,co2', since) }); });
         if (st.outdoor) st.archive.push({ key: 'x-out', kind: 'outdoor', rows: daily_(dev._id, st.outdoor.id, 'temperature,min_temp,max_temp,humidity', since) });
         if (st.rain) st.archive.push({ key: 'x-rain', kind: 'rain', rows: daily_(dev._id, st.rain.id, 'sum_rain', since) });
-        if (st.wind) st.archive.push({ key: 'x-wind', kind: 'wind', rows: daily_(dev._id, st.wind.id, 'windstrength,guststrength', since) });
+        if (st.wind) st.archive.push(windDaily_(dev._id, st.wind.id, since));
       }
       if (days) {
         var begin = Math.floor(Date.now() / 1000) - days * 86400;
@@ -72,7 +72,15 @@ function doGet(e) {
           ind.history = measure_(dev._id, ind.module, 'temperature,humidity,co2', begin);
         });
         if (st.outdoor) st.outdoor.history = measure_(dev._id, st.outdoor.id, 'temperature,humidity', begin);
-        if (st.wind) st.wind.history = measure_(dev._id, st.wind.id, 'windstrength,guststrength,windangle', begin);
+        if (st.wind) {
+          var wv = ['windstrength,guststrength,windangle', 'WindStrength,GustStrength,WindAngle'], werr = [];
+          for (var wi = 0; wi < wv.length; wi++) {
+            var wh = measure_(dev._id, st.wind.id, wv[wi], begin);
+            if (Array.isArray(wh) && wh.length) { st.wind.history = wh; st.wind.historyTypes = wv[wi]; break; }
+            werr.push(wv[wi] + ': ' + (wh && wh.error ? wh.error : 'keine Werte'));
+          }
+          if (!st.wind.history) st.wind.historyError = werr.join(' | ');
+        }
         if (st.rain) st.rain.history = measure_(dev._id, st.rain.id, 'sum_rain', begin, '1hour');
       }
       res.stations.push(st);
@@ -100,6 +108,20 @@ function measure_(devId, modId, types, begin, scale) {
   } catch (e) {
     return { error: String(e.message || e) };
   }
+}
+
+function windDaily_(devId, modId, since) {
+  // Netatmo benennt die Windtypen je nach Raster unterschiedlich – nacheinander probieren
+  var variants = ['windstrength,guststrength', 'WindStrength,GustStrength', 'max_wind_str,max_gust'];
+  var errors = [];
+  for (var i = 0; i < variants.length; i++) {
+    var rows = daily_(devId, modId, variants[i], since);
+    var good = rows.filter(function (r) { return Array.isArray(r) && r.slice(1).some(function (v) { return v !== null && v !== undefined; }); });
+    if (good.length) return { key: 'x-wind', kind: 'wind', rows: good, types: variants[i] };
+    rows.forEach(function (r) { if (r && r.error) errors.push(variants[i] + ': ' + r.error); });
+    if (!rows.length) errors.push(variants[i] + ': keine Werte');
+  }
+  return { key: 'x-wind', kind: 'wind', rows: [], error: errors.join(' | ') };
 }
 
 function daily_(devId, modId, types, since) {

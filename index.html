@@ -340,6 +340,7 @@ footer{font-size:.82rem;color:var(--muted)}
       <div class="row" style="margin-top:10px"><button type="button" id="btnNaSave" class="primary">Speichern &amp; testen</button><button type="button" id="btnNaNow">Jetzt abrufen</button><button type="button" id="btnNaArch">Langzeitdaten laden</button></div>
       <p class="small" id="naStatus" style="margin-bottom:0"></p>
       <p class="small" id="naArchStatus" style="margin:4px 0 0"></p>
+      <p class="small" id="naWindStatus" style="margin:4px 0 0"></p>
     </details>
 
     <details>
@@ -360,7 +361,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-06 18:50</p>
+    <p class="num">App-Version 2026-11-06 19:00</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
   </div>
@@ -898,7 +899,7 @@ async function fetchNetatmo(force){
   var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+(days?'&days='+days:'');
   var r=await withTimeout(fetch(url,{redirect:'follow'}),45000,'Die Netatmo-Brücke antwortet nicht.');
   var j=await r.json(); if(j.error) throw new Error('Netatmo-Brücke: '+j.error);
-  var na={fetched:Date.now(), outdoor:null, rain:null, wind:null, indoor:0};
+  var na={fetched:Date.now(), outdoor:null, rain:null, wind:null, indoor:0, windDiag:{found:false}};
   for(var si=0;si<(j.stations||[]).length;si++){ var st=j.stations[si]; if(st.loc) na.loc=st.loc;
     for(var ii=0;ii<st.indoor.length;ii++){ var ind=st.indoor[ii], sid='na-'+ind.id, sensor=state.sensors.find(function(x){return x.id===sid;});
       if(!sensor){ sensor={id:sid,name:ind.name||'Netatmo innen',type:'wohn',floor:1,pos:0,source:'netatmo',btName:'Netatmo '+(ind.module?'Innenmodul':'Basisstation'),created:Date.now()}; state.sensors.push(sensor); state.series[sid]={ts:[],t:[],h:[],q:[]}; }
@@ -909,7 +910,8 @@ async function fetchNetatmo(force){
       sensor.lastSync=Date.now(); sensor.battery=ind.battery; sensor.reachable=ind.reachable; await safe(dbPut('sensors',stripSensor(sensor))); na.indoor++; }
     if(st.outdoor&&st.outdoor.t!=null){ na.outdoor={t:st.outdoor.t,h:st.outdoor.h,ts:st.outdoor.ts,battery:st.outdoor.battery,reachable:st.outdoor.reachable};
       if(Array.isArray(st.outdoor.history)) state.naOutHist=await mergeHist('naout',['t','h'],st.outdoor.history); }
-    if(st.wind){ if(Array.isArray(st.wind.history)) state.naWindHist=await mergeHist('nawind',['s','g','a'],st.wind.history); na.wind=stripHist(st.wind); }
+    if(st.wind){ if(Array.isArray(st.wind.history)&&st.wind.history.length) state.naWindHist=await mergeHist('nawind',['s','g','a'],st.wind.history); na.wind=stripHist(st.wind);
+      na.windDiag={found:true,ts:st.wind.ts,reachable:st.wind.reachable,battery:st.wind.battery,strength:st.wind.strength,hist:Array.isArray(st.wind.history)?st.wind.history.length:null,histErr:st.wind.historyError||(st.wind.history&&st.wind.history.error)||null,keys:st.wind.keys||null}; }
     if(st.rain){ if(Array.isArray(st.rain.history)) state.naRainHist=await mergeHist('narain',['mm'],st.rain.history); na.rain=stripHist(st.rain); } }
   state.na=na; meta.fetched=na.fetched; if(days) meta.histAt=Date.now(); meta.na=na; await safe(dbPut('meta',meta));
   return na;
@@ -1307,7 +1309,8 @@ async function fetchArchive(force){
     var last=meta.last||0, keys=meta.keys||[];
     for(var si=0;si<(j.stations||[]).length;si++){ var arch=j.stations[si].archive||[];
       if(j.stations[si].loc) state.naLoc=j.stations[si].loc;
-      for(var ai=0;ai<arch.length;ai++){ var a=arch[ai]; if(a.error) logLine('Netatmo-Archiv '+({'x-wind':'Wind','x-rain':'Regen','x-out':'Außen'}[a.key]||a.key)+': '+a.error);
+      for(var ai=0;ai<arch.length;ai++){ var a=arch[ai]; if(a.key==='x-wind') state.archWindDiag={rows:(a.rows||[]).filter(function(x){return Array.isArray(x);}).length,error:a.error||((a.rows||[]).find(function(x){return x&&x.error;})||{}).error||null,types:a.types||null};
+        if(a.error) logLine('Netatmo-Archiv '+({'x-wind':'Wind','x-rain':'Regen','x-out':'Außen'}[a.key]||a.key)+': '+a.error);
         var rows=(a.rows||[]).filter(function(x){ return Array.isArray(x); }); if(!rows.length) continue;
         var D=await mergeHist('nd:'+a.key,DAYFIELDS[a.kind],rows,100000); D.kind=a.kind; D.src='Netatmo'; state.naDay[a.key]=D; await safe(dbPut('meta',D));
         if(keys.indexOf(a.key)<0) keys.push(a.key); last=Math.max(last,rows[rows.length-1][0]); } }
@@ -1580,6 +1583,12 @@ async function importBackup(file){
 /* --- Start --- */
 function renderNaStatus(){ var p=$('#naStatus'); if(!p) return; if(!naConfigured()){ p.textContent='Noch nicht eingerichtet.'; return; }
   var na=state.na; p.textContent=state.naErr?'Fehler: '+state.naErr:(na?'Aktuelle Werte: zuletzt '+ageText(na.fetched)+', '+na.indoor+' Innenmodul(e)'+(na.outdoor?', Außen':'')+(na.rain?', Regen':'')+(na.wind?', Wind':'')+'.':'Eingerichtet, noch nicht abgerufen.'); p.style.color=state.naErr?'var(--bad)':'';
+  var wd=$('#naWindStatus'); if(wd){ var d=na&&na.windDiag, aw=state.archWindDiag, t;
+    if(!na) t=''; else if(!d||!d.found) t='Windmesser: nicht in den Netatmo-Daten enthalten. Ist er derselben Station zugeordnet?';
+    else { t='Windmesser: gefunden'+(d.reachable===false?', aber nicht erreichbar':'')+(d.battery!=null?', Akku '+d.battery+' %':'')+(d.ts?', letzter Wert '+ageText(d.ts):', kein aktueller Wert')+(d.strength!=null?' ('+Math.round(d.strength)+' km/h)':'')+'.';
+      t+=' Verlauf: '+(d.hist?d.hist+' Werte':'keine'+(d.histErr?' – '+d.histErr:''))+'.';
+      if(aw) t+=' Tageswerte: '+(aw.rows?aw.rows+' Tage':'keine'+(aw.error?' – '+aw.error:''))+'.'; }
+    wd.textContent=t; wd.style.color=d&&d.found&&d.hist&&(!aw||aw.rows)?'':'var(--warn)'; }
   var a=$('#naArchStatus'); if(!a) return; var keys=Object.keys(state.naDay||{}).filter(function(k){ return hasDaily(k); });
   if(state.archBusy){ a.textContent='Langzeitdaten werden geladen …'; a.style.color=''; return; }
   if(state.archErr){ a.textContent='Langzeitdaten: Fehler – '+state.archErr+(/getmeasure|archive|undefined|Falscher/.test(state.archErr)?'':'')+' Läuft die neue Script-Version unter derselben Web-App-URL?'; a.style.color='var(--bad)'; return; }
