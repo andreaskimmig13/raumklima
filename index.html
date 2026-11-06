@@ -18,7 +18,7 @@
   --ok:#2c7a4c; --warn:#a86a12; --bad:#b03c2a;
   --ok-bg:#e3f2e9; --warn-bg:#fbefdc; --bad-bg:#fbe4df;
   --btn-ink:#ffffff;
-  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf;
+  --wall:#3d4a54; --roof:#c9d4db; --bath-bg:#cfe7ef; --bath-ink:#145a75; --bath-line:#5aa3bf; --earth:#d9cfc3;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
   --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
@@ -26,12 +26,12 @@
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; color-scheme:dark}}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1519; --surface:#162027; --ink:#e3ebf0; --muted:#94a6b2; --line:#283742;
   --temp:#eea057; --hum:#62b4e6; --hum-soft:rgba(98,180,230,.16);
   --ok:#62c48f; --warn:#e2b04d; --bad:#ef7d68;
-  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; color-scheme:dark}
+  --ok-bg:#16302a; --warn-bg:#352a14; --bad-bg:#3a1d18; --btn-ink:#0e1519; --wall:#5b6c78; --roof:#24323c; --bath-bg:#173a48; --bath-ink:#8fd0e8; --bath-line:#3f8fae; --earth:#2e2822; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 48px}
@@ -157,7 +157,10 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .cell.bath .cn{color:var(--bath-ink)}
 .cell.empty{background:var(--bg);background-image:repeating-linear-gradient(135deg,transparent 0 6px,var(--line) 6px 7px);cursor:default}
 .cell.none{color:var(--muted);font-size:.78rem;justify-content:center}
-.ground{height:10px;background:var(--wall);margin:0 -14px;border-radius:2px}
+.ground{height:8px;background:var(--wall);margin:0 -14px;border-radius:2px;position:relative;z-index:1}
+.floor.basement{border-top-width:0;box-shadow:-14px 0 0 0 var(--earth),14px 0 0 0 var(--earth)}
+.floor.basement .flabel{background:var(--surface)}
+.earth{height:14px;margin:0 -14px;background:var(--earth);border-radius:0 0 6px 6px}
 .groundinfo{display:flex;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--muted);padding-top:6px;flex-wrap:wrap}
 .legend i.dot{width:8px;height:8px;border-radius:50%}
 .legend i.sw{width:14px;height:10px;border-radius:2px}
@@ -264,7 +267,7 @@ footer{font-size:.82rem;color:var(--muted)}
     <details id="settingsBox" open>
       <summary>Allgemeine Einstellungen</summary>
       <div class="fields">
-        <label class="f">Name unterstes Stockwerk<input id="setF0" type="text"></label>
+        <label class="f">Name Untergeschoss<input id="setF0" type="text"></label>
         <label class="f">Name mittleres Stockwerk<input id="setF1" type="text"></label>
         <label class="f">Name oberstes Stockwerk<input id="setF2" type="text"></label>
         <label class="f">Feuchte-Schwelle Wohnräume (%)<input id="setThr" type="number" min="40" max="90" step="1"></label>
@@ -502,9 +505,9 @@ function demoOutdoor(ts){ var d=new Date(ts), h=d.getHours()+d.getMinutes()/60, 
 function makeDemo(now){
   var end=Math.floor(now/MIN)*MIN, start=end-14*DAY, R=rng(7);
   var rooms=[
-    {id:'demo-bad', name:'Bad', type:'bad', floor:1, btName:'TP357S (A1B2)'},
-    {id:'demo-schlaf', name:'Schlafzimmer', type:'schlaf', floor:1, btName:'TP357S (C3D4)'},
-    {id:'demo-wohn', name:'Wohnzimmer', type:'wohn', floor:0, btName:'TP357S (E5F6)'}];
+    {id:'demo-bad', name:'Bad', type:'bad', floor:2, btName:'TP357S (A1B2)'},
+    {id:'demo-schlaf', name:'Schlafzimmer', type:'schlaf', floor:2, btName:'TP357S (C3D4)'},
+    {id:'demo-wohn', name:'Wohnzimmer', type:'wohn', floor:1, btName:'TP357S (E5F6)'}];
   var series={};
   rooms.forEach(function(room,ri){
     var T=room.type==='bad'?22:(room.type==='schlaf'?18:21), H=room.type==='bad'?58:52, out={ts:[],t:[],h:[],q:[]};
@@ -545,7 +548,7 @@ function makeDemo(now){
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
 var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map()};
-var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Erdgeschoss','Obergeschoss','Dachgeschoss']};
+var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 var statusTimer=null;
@@ -584,6 +587,11 @@ async function storeRecords(sid, recs){
 async function loadAll(){
   state.settings=Object.assign({},DEFAULTS,(await safe(dbGet('meta','settings')))||{});
   state.sensors=(await safe(dbAll('sensors')))||[];
+  if(!state.settings.floorsV2){ // alte Zählung EG/OG/DG -> Keller/EG/DG
+    var old=state.settings.floors, custom=old&&!(old[0]==='Erdgeschoss'&&old[1]==='Obergeschoss'&&old[2]==='Dachgeschoss');
+    if(!custom){ state.settings.floors=DEFAULTS.floors.slice();
+      for(var mi=0;mi<state.sensors.length;mi++){ var ms=state.sensors[mi]; ms.floor=ms.floor==null||ms.floor===0?1:2; await safe(dbPut('sensors',ms)); } }
+    state.settings.floorsV2=true; await safe(dbPut('meta',Object.assign({},state.settings,{k:'settings'}))); }
   for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i]; state.series[s.id]=bucketsToSeries((await safe(dbBucketsFor(s.id)))||[]); }
   var o=await safe(dbGet('meta','outdoor')); if(o) state.outdoor=o;
 }
@@ -684,7 +692,7 @@ async function syncSensor(sensor,dev){
     return total;
   } finally { conn.onPacket=null; try{ dev.gatt.disconnect(); }catch(e){} progress(null); }
 }
-function stripSensor(s){ return {id:s.id,name:s.name,type:s.type,floor:s.floor==null?0:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
+function stripSensor(s){ return {id:s.id,name:s.name,type:s.type,floor:s.floor==null?1:s.floor,pos:s.pos||0,proto:s.proto,btName:s.btName,lastSync:s.lastSync||null,live:s.live||null,created:s.created||Date.now()}; }
 
 async function doSync(sensor){
   if(state.busy) return; if(!btAvailable()){ setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
@@ -784,12 +792,13 @@ function renderRooms(){
   var box=$('#house'); box.textContent='';
   var roof=el('div','roof'); roof.appendChild(el('div','chimney')); box.appendChild(roof);
   var names=floorNames(), floors=[[],[],[]];
-  state.sensors.forEach(function(s,ix){ var f=s.floor==null?0:Math.max(0,Math.min(2,s.floor)); floors[f].push({s:s,ix:ix}); });
+  state.sensors.forEach(function(s,ix){ var f=s.floor==null?1:Math.max(0,Math.min(2,s.floor)); floors[f].push({s:s,ix:ix}); });
   var B=0; floors.forEach(function(list){ var n=list.filter(function(x){return x.s.type==='bad';}).length; if(n>B) B=n; }); B=Math.min(B,2);
   for(var f=2;f>=0;f--){
+    if(f===0){ box.appendChild(el('div','ground')); }
     var list=floors[f].slice().sort(function(a,b){ var pa=a.s.pos||99, pb=b.s.pos||99; return pa-pb||a.ix-b.ix; });
     var baths=list.filter(function(x){return x.s.type==='bad';}), others=list.filter(function(x){return x.s.type!=='bad';});
-    var fl=el('div','floor'); fl.appendChild(el('div','flabel',names[f]));
+    var fl=el('div','floor'+(f===0?' basement':'')); fl.appendChild(el('div','flabel',names[f]));
     var grid=el('div','fgrid'); var nOther=Math.max(1,others.length);
     grid.style.gridTemplateColumns=(B?'repeat('+B+',26%) ':'')+'repeat('+nOther+',minmax(0,1fr))';
     for(var bI=0;bI<B;bI++){ if(baths[bI]) grid.appendChild(cellFor(baths[bI].s)); else { var e=el('div','cell empty'); e.setAttribute('aria-hidden','true'); grid.appendChild(e); } }
@@ -798,7 +807,7 @@ function renderRooms(){
     others.forEach(function(x){ grid.appendChild(cellFor(x.s)); });
     fl.appendChild(grid); box.appendChild(fl);
   }
-  box.appendChild(el('div','ground'));
+  box.appendChild(el('div','earth'));
   var gi=el('div','groundinfo'), on=outdoorNow();
   gi.appendChild(el('span',null,on?'Draußen '+fmt1(on.t)+' °C · '+Math.round(on.h)+' %':''));
   var oldest=state.sensors.filter(function(s){return !s.demo&&s.lastSync;}).map(function(s){return s.lastSync;});
@@ -818,7 +827,7 @@ function cellFor(s){
 }
 function renderChips(){
   var box=$('#roomChips'); box.textContent='';
-  state.sensors.slice().sort(function(a,b){ return (b.floor||0)-(a.floor||0)||(a.pos||99)-(b.pos||99); }).forEach(function(s){
+  state.sensors.slice().sort(function(a,b){ return (b.floor==null?1:b.floor)-(a.floor==null?1:a.floor)||(a.pos||99)-(b.pos||99); }).forEach(function(s){
     var b=el('button',s.type==='bad'?'bath':null,s.name); b.type='button'; b.setAttribute('aria-pressed',String(state.sel===s.id));
     b.addEventListener('click',function(){ state.sel=s.id; renderChips(); renderAnalysis(); }); box.appendChild(b); });
   var on=box.querySelector('[aria-pressed="true"]'); if(on&&box.offsetParent) box.scrollLeft=Math.max(0,on.offsetLeft-box.offsetLeft-16);
@@ -924,7 +933,7 @@ function renderSensors(){
       var ln=el('label','f','Raumname'); var inN=el('input'); inN.id='n_'+safeId(s.id); inN.value=s.name; ln.appendChild(inN); f.appendChild(ln);
       var lt=el('label','f','Raumtyp'); var sel=el('select'); sel.id='t_'+safeId(s.id); Object.keys(ROOMTYPES).forEach(function(k){ var o=el('option',null,ROOMTYPES[k].label); o.value=k; if(s.type===k) o.selected=true; sel.appendChild(o); }); lt.appendChild(sel); f.appendChild(lt);
       var lp=el('label','f','Protokoll'); var sp=el('select'); sp.id='p_'+safeId(s.id); [['auto','automatisch'],['C','TP357 / 358 / 359'],['S','TP357S']].forEach(function(x){ var o=el('option',null,x[1]); o.value=x[0]; if((s.proto||'auto')===x[0]) o.selected=true; sp.appendChild(o); }); lp.appendChild(sp); f.appendChild(lp);
-      var lf=el('label','f','Stockwerk'); var sf=el('select'); sf.id='f_'+safeId(s.id); floorNames().forEach(function(nm,ix){ var o=el('option',null,nm); o.value=String(ix); if((s.floor||0)===ix) o.selected=true; sf.appendChild(o); }); lf.appendChild(sf); f.appendChild(lf);
+      var lf=el('label','f','Stockwerk'); var sf=el('select'); sf.id='f_'+safeId(s.id); floorNames().forEach(function(nm,ix){ var o=el('option',null,nm); o.value=String(ix); if((s.floor==null?1:s.floor)===ix) o.selected=true; sf.appendChild(o); }); lf.appendChild(sf); f.appendChild(lf);
       var lpo=el('label','f','Position im Stockwerk'); var ip=el('input'); ip.id='o_'+safeId(s.id); ip.type='number'; ip.min='1'; ip.max='9'; ip.value=s.pos||''; ip.placeholder='1 = links'; lpo.appendChild(ip); f.appendChild(lpo);
       d.appendChild(f);
       var save=function(){ s.name=inN.value.trim()||s.name; s.type=sel.value; s.proto=sp.value; s.floor=+sf.value; s.pos=clamp(+ip.value,0,9,0); safe(dbPut('sensors',stripSensor(s))); renderRooms(); renderChips(); renderAnalysis(); renderTips(); renderOutdoor(); d.querySelector('h3').textContent=s.name; };
