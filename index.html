@@ -334,8 +334,9 @@ footer{font-size:.82rem;color:var(--muted)}
         <label class="f" style="grid-column:1/-1">Web-App-URL der Brücke<input id="setNaUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
         <label class="f">Schlüssel<input id="setNaKey" type="password" autocomplete="off"></label>
       </div>
-      <div class="row" style="margin-top:10px"><button type="button" id="btnNaSave" class="primary">Speichern &amp; testen</button><button type="button" id="btnNaNow">Jetzt abrufen</button></div>
+      <div class="row" style="margin-top:10px"><button type="button" id="btnNaSave" class="primary">Speichern &amp; testen</button><button type="button" id="btnNaNow">Jetzt abrufen</button><button type="button" id="btnNaArch">Langzeitdaten laden</button></div>
       <p class="small" id="naStatus" style="margin-bottom:0"></p>
+      <p class="small" id="naArchStatus" style="margin:4px 0 0"></p>
     </details>
 
     <details>
@@ -356,6 +357,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
+    <p class="num">App-Version 2026-11-06 18:25</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
   </div>
@@ -919,7 +921,7 @@ async function mergeHist(key,fields,rows,keepDays){
   var hist={k:key,ts:keys}; fields.forEach(function(f,ix){ hist[f]=keys.map(function(k){ return map[k][ix]; }); });
   await safe(dbPut('meta',hist)); return hist;
 }
-async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!r.skipped&&!r.error) fetchArchive(false); if(r&&!r.skipped) logLine('Netatmo: '+r.indoor+' Innenmodul(e)'+(r.outdoor?', Außenmodul':'')+(r.rain?', Regen':'')+(r.wind?', Wind':'')+' aktualisiert.'); return r; }
+async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!r.error) fetchArchive(false); if(r&&!r.skipped) logLine('Netatmo: '+r.indoor+' Innenmodul(e)'+(r.outdoor?', Außenmodul':'')+(r.rain?', Regen':'')+(r.wind?', Wind':'')+' aktualisiert.'); return r; }
   catch(e){ logLine('Netatmo-Fehler: '+e.message); state.naErr=e.message; return {error:e.message}; } }
 
 /* --- Außenwetter (Open-Meteo, ohne Schlüssel) --- */
@@ -1293,7 +1295,7 @@ async function fetchArchive(force){
   if(!naConfigured()||state.demo||state.archBusy) return;
   var meta=(await safe(dbGet('meta','naarch')))||{k:'naarch',keys:[]};
   if(!force && meta.at && Date.now()-meta.at<20*HOUR) return;
-  state.archBusy=true; var first=!meta.last;
+  state.archBusy=true; renderNaStatus(); var first=!meta.last;
   try{
     if(first) logLine('Lade Netatmo-Langzeitdaten (einmalig, kann eine Minute dauern) …');
     var since=meta.last?Math.floor((meta.last-3*DAY)/1000):0;
@@ -1306,8 +1308,9 @@ async function fetchArchive(force){
         if(keys.indexOf(a.key)<0) keys.push(a.key); last=Math.max(last,rows[rows.length-1][0]); } }
     meta.keys=keys; meta.last=last; meta.at=Date.now(); await safe(dbPut('meta',meta));
     logLine('Netatmo-Langzeitdaten aktualisiert'+(keys.length?' ('+keys.length+' Module).':'.'));
-  }catch(e){ logLine('Netatmo-Archiv: '+e.message); }
-  finally{ state.archBusy=false; }
+    state.archErr=null; state.archInfo={at:meta.at,keys:keys.length,first:keys.reduce(function(m,k){ var D=state.naDay[k]; return D&&D.ts.length&&(!m||D.ts[0]<m)?D.ts[0]:m; },null)};
+  }catch(e){ logLine('Netatmo-Archiv: '+e.message); state.archErr=e.message; }
+  finally{ state.archBusy=false; renderNaStatus(); }
   if(curTab==='verlauf'){ renderChips(); renderAnalysis(); }
 }
 function monthKey(ts){ var d=new Date(ts); return d.getFullYear()*12+d.getMonth(); }
@@ -1516,7 +1519,13 @@ async function importBackup(file){
 
 /* --- Start --- */
 function renderNaStatus(){ var p=$('#naStatus'); if(!p) return; if(!naConfigured()){ p.textContent='Noch nicht eingerichtet.'; return; }
-  var na=state.na; p.textContent=state.naErr?'Fehler: '+state.naErr:(na?'Zuletzt aktualisiert '+ageText(na.fetched)+': '+na.indoor+' Innenmodul(e)'+(na.outdoor?', Außen':'')+(na.rain?', Regen':'')+(na.wind?', Wind':'')+'.':'Eingerichtet, noch nicht abgerufen.'); p.style.color=state.naErr?'var(--bad)':''; }
+  var na=state.na; p.textContent=state.naErr?'Fehler: '+state.naErr:(na?'Aktuelle Werte: zuletzt '+ageText(na.fetched)+', '+na.indoor+' Innenmodul(e)'+(na.outdoor?', Außen':'')+(na.rain?', Regen':'')+(na.wind?', Wind':'')+'.':'Eingerichtet, noch nicht abgerufen.'); p.style.color=state.naErr?'var(--bad)':'';
+  var a=$('#naArchStatus'); if(!a) return; var keys=Object.keys(state.naDay||{}).filter(function(k){ return hasDaily(k); });
+  if(state.archBusy){ a.textContent='Langzeitdaten werden geladen …'; a.style.color=''; return; }
+  if(state.archErr){ a.textContent='Langzeitdaten: Fehler – '+state.archErr+(/getmeasure|archive|undefined|Falscher/.test(state.archErr)?'':'')+' Läuft die neue Script-Version unter derselben Web-App-URL?'; a.style.color='var(--bad)'; return; }
+  a.style.color=''; if(!keys.length){ a.textContent='Langzeitdaten: noch keine. Sie werden nach dem nächsten Abruf geladen, oder tippe auf „Langzeitdaten laden“.'; return; }
+  var first=keys.reduce(function(m,k){ var t=state.naDay[k].ts[0]; return !m||t<m?t:m; },null);
+  a.textContent='Langzeitdaten: '+keys.length+' Module, Tageswerte seit '+new Date(first).toLocaleDateString('de-DE')+'.'; }
 function fillSettings(){ var st=state.settings; $('#setNaUrl').value=st.naUrl||''; $('#setNaKey').value=st.naKey||''; var fl=st.floors||DEFAULTS.floors; $('#setF0').value=fl[0]; $('#setF1').value=fl[1]; $('#setF2').value=fl[2]; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
 async function boot2(){
   await loadAll();
@@ -1526,6 +1535,7 @@ async function boot2(){
   fillSettings(); await knownDevices(); renderAll();
   try{ if(navigator.storage&&navigator.storage.persist&&!state.demo) navigator.storage.persist(); }catch(e){}
   if(!state.demo && state.settings.autoSync) setTimeout(function(){ syncAll(true); },800);
+  else if(!state.demo && naConfigured()) setTimeout(function(){ fetchArchive(false); },1500);
   if(!state.demo){ loadOutdoor().then(function(){ renderOutdoor(); renderTips(); renderAnalysis(); }); }
 }
 document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; renderAnalysis(); renderTips(); }); });
@@ -1537,6 +1547,7 @@ $('#btnCloseStatus').addEventListener('click',function(){ $('#statusBar').hidden
 $('#btnPair').addEventListener('click',function(){ pairNew(false); });
 $('#btnPairAll').addEventListener('click',function(){ pairNew(true); });
 $('#btnCsv').addEventListener('click',exportCsv);
+$('#btnNaArch').addEventListener('click',async function(){ if(!naConfigured()){ setStatus('Zuerst URL und Schlüssel eintragen.',true); return; } setStatus('Lade Netatmo-Langzeitdaten, das kann eine Minute dauern …'); await fetchArchive(true); renderAll(); setStatus(state.archErr?'Langzeitdaten: '+state.archErr:'Langzeitdaten geladen.',!!state.archErr); });
 $('#btnNaSave').addEventListener('click',async function(){ var st=state.settings; st.naUrl=$('#setNaUrl').value.trim(); st.naKey=$('#setNaKey').value.trim();
   await safe(dbPut('meta',Object.assign({},st,{k:'settings'}))); state.naErr=null;
   if(!naConfigured()){ renderNaStatus(); setStatus('Netatmo-Einstellungen gelöscht.'); return; }
