@@ -169,6 +169,19 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .sw.bath{background:var(--bath-bg);outline:1px solid var(--bath-line)}
 .floorbtns{display:flex;gap:6px;flex-wrap:wrap}
 .floorbtns button{min-height:42px;padding:8px 12px;font-size:.9rem}
+.wx{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.wxt{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 9px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.wxl{font-family:var(--display);font-stretch:85%;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.wxv{font-family:var(--display);font-weight:700;font-size:1.6rem;line-height:1.05;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:3px;white-space:nowrap}
+.wxv small{font-size:.75rem;font-weight:600}
+.wxv.t{color:var(--temp)} .wxv.h{color:var(--hum)}
+.wxs{font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wxs.hi{color:var(--bad);font-weight:600}
+.warrow{width:20px;height:20px;align-self:center;fill:var(--ink);flex:0 0 auto}
+.wxsrc{grid-column:1/-1;font-size:.7rem;color:var(--muted);text-align:right;margin-top:-4px}
+.aq{display:flex;flex-direction:column;gap:0;margin-top:3px;padding:3px 6px;border-radius:6px;font-size:.7rem;line-height:1.25;width:fit-content;max-width:100%}
+.aq b{font-weight:700;font-size:.74rem}
+.aq.ok{background:var(--ok-bg);color:var(--ok)} .aq.warn{background:var(--warn-bg);color:var(--warn)} .aq.bad{background:var(--bad-bg);color:var(--bad)}
 footer{font-size:.82rem;color:var(--muted)}
 </style>
 
@@ -230,6 +243,7 @@ footer{font-size:.82rem;color:var(--muted)}
         <span><i style="background:var(--temp)"></i>Temperatur</span>
         <span><i style="background:var(--hum)"></i>rel. Luftfeuchte</span>
         <span><i style="background:var(--hum-soft);height:10px"></i>Feuchtephase</span>
+        <span><i style="background:repeating-linear-gradient(90deg,var(--muted) 0 2px,transparent 2px 5px)"></i>Durchschnitt</span>
         <span>▼ erkannte Lüftung</span>
       </div>
       <div class="stats" id="stats"></div>
@@ -472,6 +486,18 @@ function analyze(sensor, S, from, to, st, outdoorAt){
 }
 function localDayKey(ts){ var d=new Date(ts); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
 function fmtDur(ms){ var m=Math.round(ms/MIN); if(m<60) return m+' min'; var h=Math.floor(m/60), r=m%60; return h+' h'+(r?' '+r+' min':''); }
+function weatherNow(){
+  var on=outdoorNow(), na=state.na, fresh=function(x){ return x&&x.ts&&Date.now()-x.ts<90*MIN; };
+  var w={t:on?on.t:null,h:on?on.h:null,src:on&&on.src?on.src:(state.demo?'Beispiel':(state.outdoor?'Open-Meteo':null)),wind:null,gust:null,dir:null,rain1:null,rain24:null,rainNow:null,rainSrc:null};
+  if(na&&fresh(na.wind)){ w.wind=na.wind.strength; w.gust=na.wind.gust; w.dir=na.wind.angle; w.windSrc='Netatmo'; }
+  if(na&&fresh(na.rain)){ w.rain1=na.rain.h1; w.rain24=na.rain.h24; w.rainNow=na.rain.now; w.rainSrc='Netatmo'; }
+  var c=state.outdoor&&state.outdoor.cur&&Date.now()-state.outdoor.fetched<3*HOUR?state.outdoor.cur:null;
+  if(w.wind==null&&c&&c.wind!=null){ w.wind=c.wind; w.gust=c.gust; w.dir=c.dir; w.windSrc='Open-Meteo'; }
+  if(w.rain1==null&&c&&c.precip!=null){ w.rainNow=c.precip; w.rainSrc='Open-Meteo'; }
+  if(state.demo){ w.wind=12; w.gust=24; w.dir=240; w.rain1=0; w.rain24=1.2; w.rainNow=0; w.windSrc=w.rainSrc='Beispiel'; }
+  return w;
+}
+function airQuality(co2){ if(co2==null) return null; if(co2<800) return {cls:'ok',txt:'Luft gut'}; if(co2<1000) return {cls:'ok',txt:'Luft in Ordnung'}; if(co2<1400) return {cls:'warn',txt:'Luft mäßig'}; return {cls:'bad',txt:'Luft schlecht'}; }
 function windDir(a){ var d=['N','NO','O','SO','S','SW','W','NW']; return d[Math.round(((a%360)+360)%360/45)%8]; }
 function airDuration(te){ if(te==null) return null; if(te<0) return '4–6 min'; if(te<10) return '8–12 min'; if(te<16) return '15–20 min'; return '25–30 min'; }
 
@@ -865,10 +891,10 @@ async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!
 async function loadOutdoor(){
   var st=state.settings; if(st.lat==null||st.lon==null) return; if(state.outdoor && Date.now()-state.outdoor.fetched<45*MIN && state.outdoor.lat===st.lat && state.outdoor.lon===st.lon) return;
   try{
-    var url='https://api.open-meteo.com/v1/forecast?latitude='+st.lat+'&longitude='+st.lon+'&hourly=temperature_2m,relative_humidity_2m&current=temperature_2m,relative_humidity_2m&past_days=31&forecast_days=1&timezone=UTC';
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+st.lat+'&longitude='+st.lon+'&hourly=temperature_2m,relative_humidity_2m&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation&past_days=31&forecast_days=1&timezone=UTC';
     var r=await withTimeout(fetch(url),10000,'Zeitüberschreitung'); if(!r.ok) throw new Error('HTTP '+r.status); var j=await r.json();
     var ts=j.hourly.time.map(function(x){ return Date.parse(x+'Z'); });
-    state.outdoor={fetched:Date.now(),lat:st.lat,lon:st.lon,ts:ts,t:j.hourly.temperature_2m,h:j.hourly.relative_humidity_2m,cur:j.current?{t:j.current.temperature_2m,h:j.current.relative_humidity_2m}:null,k:'outdoor'};
+    state.outdoor={fetched:Date.now(),lat:st.lat,lon:st.lon,ts:ts,t:j.hourly.temperature_2m,h:j.hourly.relative_humidity_2m,cur:j.current?{t:j.current.temperature_2m,h:j.current.relative_humidity_2m,wind:j.current.wind_speed_10m,gust:j.current.wind_gusts_10m,dir:j.current.wind_direction_10m,precip:j.current.precipitation}:null,k:'outdoor'};
     await safe(dbPut('meta',state.outdoor));
   }catch(e){ state.outdoorErr=true; }
 }
@@ -905,6 +931,7 @@ function roomStatus(s,c){
 }
 function renderRooms(){
   var box=$('#house'); box.textContent='';
+  box.appendChild(weatherStrip());
   var roof=el('div','roof'); roof.appendChild(el('div','chimney')); box.appendChild(roof);
   var names=floorNames(), floors=[[],[],[]];
   state.sensors.forEach(function(s,ix){ if(s.hidden) return; var f=s.floor==null?1:Math.max(0,Math.min(2,s.floor)); floors[f].push({s:s,ix:ix}); });
@@ -923,12 +950,38 @@ function renderRooms(){
     fl.appendChild(grid); box.appendChild(fl);
   }
   box.appendChild(el('div','earth'));
-  var gi=el('div','groundinfo'), on=outdoorNow();
-  gi.appendChild(el('span',null,on?'Draußen '+fmt1(on.t)+' °C · '+Math.round(on.h)+' %':''));
+  var gi=el('div','groundinfo');
+  var naAge=state.na&&state.na.fetched?'Netatmo '+ageText(state.na.fetched):''; gi.appendChild(el('span',null,naAge));
   var oldest=state.sensors.filter(function(s){return !s.demo&&s.lastSync;}).map(function(s){return s.lastSync;});
   gi.appendChild(el('span',null,oldest.length?'ältester Abruf '+ageText(Math.min.apply(null,oldest)):''));
   box.appendChild(gi);
   $('#nowHint').textContent=state.sensors.length?'Raum antippen für den Verlauf':'';
+}
+function weatherStrip(){
+  var w=weatherNow(), box=el('div','wx');
+  // Außen
+  var a=el('div','wxt'); a.appendChild(el('span','wxl','Außen'));
+  var av=el('span','wxv t',w.t!=null?fmt1(w.t):'–'); av.appendChild(el('small',null,'°C')); a.appendChild(av);
+  a.appendChild(el('span','wxs',w.h!=null?Math.round(w.h)+' % · '+fmt1(absHum(w.t,w.h))+' g/m³':(state.settings.lat==null&&!naConfigured()?'Ort eintragen':'')));
+  box.appendChild(a);
+  // Wind
+  var b=el('div','wxt'); b.appendChild(el('span','wxl','Wind'));
+  var bv=el('span','wxv'); 
+  if(w.dir!=null){ var ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('class','warrow'); svg.setAttribute('aria-hidden','true');
+    var path=document.createElementNS(ns,'path'); path.setAttribute('d','M12 3 L18 19 L12 15 L6 19 Z'); path.setAttribute('transform','rotate('+((w.dir+180)%360)+' 12 12)'); svg.appendChild(path); bv.appendChild(svg); }
+  bv.appendChild(document.createTextNode(w.wind!=null?String(Math.round(w.wind)):'–')); bv.appendChild(el('small',null,'km/h')); b.appendChild(bv);
+  var gustHi=w.gust!=null&&w.gust>=40;
+  b.appendChild(el('span','wxs'+(gustHi?' hi':''),w.gust!=null?'Böen '+Math.round(w.gust)+(w.dir!=null?' · '+windDir(w.dir):''):(w.dir!=null?'aus '+windDir(w.dir):'')));
+  box.appendChild(b);
+  // Regen
+  var c=el('div','wxt'); c.appendChild(el('span','wxl','Regen'));
+  var raining=(w.rainNow!=null&&w.rainNow>0)||(w.rain1!=null&&w.rain1>0.1);
+  var cv=el('span','wxv h',w.rain1!=null?fmt1(w.rain1):(w.rainNow!=null?fmt1(w.rainNow):'–')); cv.appendChild(el('small',null,w.rain1!=null?'mm/h':'mm')); c.appendChild(cv);
+  c.appendChild(el('span','wxs'+(raining?' hi':''),raining?'es regnet':(w.rain24!=null?fmt1(w.rain24)+' mm heute':(w.rainNow!=null?'trocken':''))));
+  box.appendChild(c);
+  var src=[w.src,w.windSrc,w.rainSrc].filter(function(x,i,a){ return x&&a.indexOf(x)===i; });
+  if(src.length){ var f=el('div','wxsrc',src.join(' · ')); box.appendChild(f); }
+  return box;
 }
 function cellFor(s){
   var c=currentOf(s), st=roomStatus(s,c), b=el('button','cell'+(s.type==='bad'?' bath':'')); b.type='button';
@@ -936,8 +989,8 @@ function cellFor(s){
   b.appendChild(el('span','cn',s.name)); b.appendChild(el('span','sd '+st.cls));
   b.appendChild(el('span','ct',c?fmt1(c.t)+' °C':'–'));
   b.appendChild(el('span','ch'+(c&&c.h>=thrFor(s)?' hi':''),c?c.h+' %':'–'));
-  if(c&&c.co2) b.appendChild(el('span','cc'+(c.co2>=1400?' hi':(c.co2>=1000?' mid':'')),Math.round(c.co2).toLocaleString('de-DE')+' ppm'));
-  if(st.cls!=='ok') b.appendChild(el('span','age',st.txt));
+  if(c&&c.co2){ var aq=airQuality(c.co2), aqEl=el('span','aq '+aq.cls); aqEl.appendChild(el('b',null,aq.txt)); aqEl.appendChild(el('span',null,Math.round(c.co2).toLocaleString('de-DE')+' ppm')); b.appendChild(aqEl); b.classList.add('hasaq'); }
+  if(st.cls!=='ok' && !(c&&c.co2&&/CO₂/.test(st.txt))) b.appendChild(el('span','age',st.txt));
   b.addEventListener('click',function(){ state.sel=s.id; showTab('verlauf'); });
   return b;
 }
@@ -1106,7 +1159,7 @@ function drawChart(){
   g.strokeStyle=line; g.lineWidth=1; g.fillStyle=muted; g.textAlign='right';
   for(var v=tLo;v<=tHi+1e-9;v+=tStep){ var y=Math.round(YT(v))+.5; g.beginPath(); g.moveTo(x0,y); g.lineTo(x1,y); g.stroke(); g.fillText(String(v).replace('.',','),x0-6,y); }
   for(var hv=hLo;hv<=hHi;hv+=10){ var yy=Math.round(YH(hv))+.5; g.beginPath(); g.moveTo(x0,yy); g.lineTo(x1,yy); g.stroke(); g.fillText(hv+'',x0-6,yy); }
-  g.textAlign='left'; g.fillStyle=cT; g.fillText('°C',x0+4,p1.y0+8); g.fillStyle=cH; g.fillText('% rF',x0+4,p2.y0+8);
+  g.textAlign='left'; g.font='600 12px '+cssVar('--body'); g.fillStyle=cT; g.fillText('°C   Ø '+fmt1(A.meanT)+' °C',x0+4,p1.y0+20); g.fillStyle=cH; g.fillText('% rF   Ø '+Math.round(A.meanH)+' %',x0+4,p2.y0+8); g.font='12px '+cssVar('--body');
   // Tage
   g.fillStyle=muted; g.textAlign='center'; var dayStep=state.range<=1?0:(state.range<=7?1:(state.range<=14?2:5));
   if(dayStep===0){ var d0=new Date(from); d0.setMinutes(0,0,0); for(var t=d0.getTime();t<=to;t+=HOUR){ var hh=new Date(t).getHours(); if(hh%6!==0||t<from) continue; var xx=X(t); g.strokeStyle=line; g.beginPath(); g.moveTo(xx,p1.y0); g.lineTo(xx,p2.y1); g.stroke(); g.fillText(hh+' Uhr',xx,p2.y1+14); } }
@@ -1121,7 +1174,13 @@ function drawChart(){
       if(lastTs!=null&&R.ts[i]-lastTs>(R.q[i]>=2?30*MIN:2*HOUR)){ flush(); pen=false; }
       if(c!==col){ flush(); col=c; } acc+=vals[i]; cnt++; lastTs=R.ts[i]; }
     flush(); g.stroke(); }
+  // Durchschnitt
+  g.save(); g.setLineDash([2,4]); g.lineWidth=1.4; g.font='600 11px '+cssVar('--body');
+  var my=Math.round(YT(A.meanT))+.5; g.strokeStyle=cT; g.beginPath(); g.moveTo(x0,my); g.lineTo(x1,my); g.stroke();
+  var mh=Math.round(YH(A.meanH))+.5; g.strokeStyle=cH; g.beginPath(); g.moveTo(x0,mh); g.lineTo(x1,mh); g.stroke(); g.restore();
+  function avgLabel(txt,y,color){ g.font='600 11px '+cssVar('--body'); var tw=g.measureText(txt).width+8, bx=x0+30; g.fillStyle=cssVar('--surface'); g.globalAlpha=.85; g.fillRect(bx,y-8,tw,16); g.globalAlpha=1; g.fillStyle=color; g.textAlign='left'; g.fillText(txt,bx+4,y); }
   series(R.t,YT,cT); series(R.h,YH,cH);
+  g.font='12px '+cssVar('--body');
   // Lüftungen
   A.events.forEach(function(e){ var x=X(e.from); if(x<x0||x>x1) return; g.fillStyle=e.kind==='stoss'?cOk:(e.forgotten?cBad:cWarn); g.beginPath(); g.moveTo(x-4,p1.y0+1); g.lineTo(x+4,p1.y0+1); g.lineTo(x,p1.y0+8); g.closePath(); g.fill(); });
   // Hover
