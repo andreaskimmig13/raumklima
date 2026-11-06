@@ -64,7 +64,7 @@ function doGet(e) {
         st.indoor.forEach(function (ind) { st.archive.push({ key: 'na-' + ind.id, kind: 'indoor', rows: daily_(dev._id, ind.module, 'temperature,min_temp,max_temp,humidity,co2', since) }); });
         if (st.outdoor) st.archive.push({ key: 'x-out', kind: 'outdoor', rows: daily_(dev._id, st.outdoor.id, 'temperature,min_temp,max_temp,humidity', since) });
         if (st.rain) st.archive.push({ key: 'x-rain', kind: 'rain', rows: daily_(dev._id, st.rain.id, 'sum_rain', since) });
-        if (st.wind) st.archive.push(windDaily_(dev._id, st.wind.id, since));
+        if (st.wind) st.archive.push({ key: 'x-wind', kind: 'wind', rows: daily_(dev._id, st.wind.id, 'windstrength,guststrength', since) });
       }
       if (days) {
         var begin = Math.floor(Date.now() / 1000) - days * 86400;
@@ -72,8 +72,7 @@ function doGet(e) {
           ind.history = measure_(dev._id, ind.module, 'temperature,humidity,co2', begin);
         });
         if (st.outdoor) st.outdoor.history = measure_(dev._id, st.outdoor.id, 'temperature,humidity', begin);
-        if (st.wind) { st.wind.history = measure_(dev._id, st.wind.id, 'windstrength,guststrength,windangle', begin);
-          if (!Array.isArray(st.wind.history) || !st.wind.history.length) st.wind.history = measure_(dev._id, st.wind.id, 'WindStrength,GustStrength,WindAngle', begin); }
+        if (st.wind) st.wind.history = measure_(dev._id, st.wind.id, 'windstrength,guststrength,windangle', begin);
         if (st.rain) st.rain.history = measure_(dev._id, st.rain.id, 'sum_rain', begin, '1hour');
       }
       res.stations.push(st);
@@ -101,22 +100,6 @@ function measure_(devId, modId, types, begin, scale) {
   } catch (e) {
     return { error: String(e.message || e) };
   }
-}
-
-function windDaily_(devId, modId, since) {
-  // Netatmo nennt die Windtypen je nach Raster unterschiedlich – nacheinander probieren
-  var variants = ['windstrength,guststrength', 'WindStrength,GustStrength', 'max_wind_str,max_gust', 'windstrength', 'guststrength'];
-  var errors = [];
-  for (var i = 0; i < variants.length; i++) {
-    var rows = daily_(devId, modId, variants[i], since);
-    var good = rows.filter(function (r) { return Array.isArray(r) && r.slice(1).some(function (v) { return v !== null && v !== undefined; }); });
-    if (good.length) {
-      if (variants[i].indexOf(',') < 0) good = good.map(function (r) { return variants[i] === 'guststrength' ? [r[0], null, r[1]] : [r[0], r[1], null]; });
-      return { key: 'x-wind', kind: 'wind', rows: good, types: variants[i] };
-    }
-    rows.forEach(function (r) { if (r && r.error) errors.push(variants[i] + ': ' + r.error); });
-  }
-  return { key: 'x-wind', kind: 'wind', rows: [], error: errors.length ? errors.join(' | ') : 'Netatmo liefert keine Tageswerte für das Windmodul.' };
 }
 
 function daily_(devId, modId, types, since) {

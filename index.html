@@ -360,7 +360,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-06 18:40</p>
+    <p class="num">App-Version 2026-11-06 18:50</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
   </footer>
   </div>
@@ -523,7 +523,6 @@ function weatherNow(){
   if(na&&fresh(na.wind)){ w.wind=na.wind.strength; w.gust=na.wind.gust; w.dir=na.wind.angle; w.windSrc='Netatmo'; }
   if(na&&fresh(na.rain)){ w.rain1=na.rain.h1; w.rain24=na.rain.h24; w.rainNow=na.rain.now; w.rainSrc='Netatmo'; }
   var c=state.outdoor&&state.outdoor.cur&&Date.now()-state.outdoor.fetched<3*HOUR?state.outdoor.cur:null;
-  if(w.wind==null&&c&&c.wind!=null){ w.wind=c.wind; w.gust=c.gust; w.dir=c.dir; w.windSrc='Open-Meteo'; }
   if(w.rain1==null&&c&&c.precip!=null){ w.rainNow=c.precip; w.rainSrc='Open-Meteo'; }
   if(state.demo){ w.wind=12; w.gust=24; w.dir=240; w.rain1=0; w.rain24=1.2; w.rainNow=0; w.windSrc=w.rainSrc='Beispiel'; }
   return w;
@@ -679,7 +678,7 @@ async function loadAll(){
   for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i]; state.series[s.id]=bucketsToSeries((await safe(dbBucketsFor(s.id)))||[]); }
   var o=await safe(dbGet('meta','outdoor')); if(o) state.outdoor=o;
   var nm=await safe(dbGet('meta','netatmo')); if(nm&&nm.na) state.na=nm.na; var nh=await safe(dbGet('meta','naout')); if(nh) state.naOutHist=nh;
-  var na2=await safe(dbGet('meta','naarch')); if(na2&&na2.keys){ for(var ak=0;ak<na2.keys.length;ak++){ var Dd=await safe(dbGet('meta','nd:'+na2.keys[ak])); if(Dd){ Dd.kind=Dd.kind||kindOfKey(na2.keys[ak]); state.naDay[na2.keys[ak]]=Dd; } } }
+  var na2=await safe(dbGet('meta','naarch')); if(na2&&na2.keys){ for(var ak=0;ak<na2.keys.length;ak++){ var Dd=await safe(dbGet('meta','nd:'+na2.keys[ak])); if(Dd&&Dd.src!=='Open-Meteo'){ Dd.kind=Dd.kind||kindOfKey(na2.keys[ak]); state.naDay[na2.keys[ak]]=Dd; } } }
   var nw=await safe(dbGet('meta','nawind')); if(nw) state.naWindHist=nw; var nr=await safe(dbGet('meta','narain')); if(nr) state.naRainHist=nr;
 }
 async function safe(p){ try{ return await p; }catch(e){ return null; } }
@@ -929,9 +928,9 @@ async function syncNetatmo(force){ try{ var r=await fetchNetatmo(force); if(r&&!
 
 /* --- Außenwetter (Open-Meteo, ohne Schlüssel) --- */
 async function loadOutdoor(){
-  var st=state.settings; if(st.lat==null||st.lon==null) return; if(state.outdoor && state.outdoor.ws && Date.now()-state.outdoor.fetched<45*MIN && state.outdoor.lat===st.lat && state.outdoor.lon===st.lon) return;
+  var st=state.settings; if(st.lat==null||st.lon==null) return; if(state.outdoor && state.outdoor.pr && Date.now()-state.outdoor.fetched<45*MIN && state.outdoor.lat===st.lat && state.outdoor.lon===st.lon) return;
   try{
-    var url='https://api.open-meteo.com/v1/forecast?latitude='+st.lat+'&longitude='+st.lon+'&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation&past_days=31&forecast_days=1&timezone=UTC';
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+st.lat+'&longitude='+st.lon+'&hourly=temperature_2m,relative_humidity_2m,precipitation&current=temperature_2m,relative_humidity_2m,precipitation&past_days=31&forecast_days=1&timezone=UTC';
     var r=await withTimeout(fetch(url),10000,'Zeitüberschreitung'); if(!r.ok) throw new Error('HTTP '+r.status); var j=await r.json();
     var ts=j.hourly.time.map(function(x){ return Date.parse(x+'Z'); });
     state.outdoor={fetched:Date.now(),lat:st.lat,lon:st.lon,ts:ts,t:j.hourly.temperature_2m,h:j.hourly.relative_humidity_2m,ws:j.hourly.wind_speed_10m,wg:j.hourly.wind_gusts_10m,wd:j.hourly.wind_direction_10m,pr:j.hourly.precipitation,cur:j.current?{t:j.current.temperature_2m,h:j.current.relative_humidity_2m,wind:j.current.wind_speed_10m,gust:j.current.wind_gusts_10m,dir:j.current.wind_direction_10m,precip:j.current.precipitation}:null,k:'outdoor'};
@@ -1014,7 +1013,7 @@ function weatherStrip(){
     var path=document.createElementNS(ns,'path'); path.setAttribute('d','M12 3 L18 19 L12 15 L6 19 Z'); path.setAttribute('transform','rotate('+((w.dir+180)%360)+' 12 12)'); svg.appendChild(path); bv.appendChild(svg); }
   bv.appendChild(document.createTextNode(w.wind!=null?String(Math.round(w.wind)):'–')); bv.appendChild(el('small',null,'km/h')); b.appendChild(bv);
   var gustHi=w.gust!=null&&w.gust>=40;
-  b.appendChild(el('span','wxs'+(gustHi?' hi':''),w.gust!=null?'Böen '+Math.round(w.gust)+(w.dir!=null?' · '+windDir(w.dir):''):(w.dir!=null?'aus '+windDir(w.dir):'')));
+  if(w.wind==null&&!state.demo){ b.appendChild(el('span','wxs','nur mit Netatmo-Windmesser')); } else b.appendChild(el('span','wxs'+(gustHi?' hi':''),w.gust!=null?'Böen '+Math.round(w.gust)+(w.dir!=null?' · '+windDir(w.dir):''):(w.dir!=null?'aus '+windDir(w.dir):'')));
   box.appendChild(b);
   // Regen
   var c=el('div','wxt'); c.appendChild(wxLabel('drop','Regen'));
@@ -1188,7 +1187,6 @@ function histOut(){
 function histWind(){
   if(state.demo){ var ts=[],s=[],g=[],a=[], end=Math.floor(Date.now()/HOUR)*HOUR, R=rng(3); for(var x=end-30*DAY;x<=end;x+=HOUR){ var v=Math.max(0,8+7*Math.sin(x/DAY*1.7)+R()*6); ts.push(x); s.push(Math.round(v)); g.push(Math.round(v*1.8+R()*5)); a.push(Math.round((220+60*Math.sin(x/DAY))%360)); } return {ts:ts,s:s,g:g,a:a,src:'Beispiel'}; }
   var n=state.naWindHist; if(n&&n.ts&&n.ts.length) return {ts:n.ts,s:n.s,g:n.g,a:n.a,src:'Netatmo'};
-  var o=state.outdoor; if(o&&o.ws){ var r={ts:[],s:[],g:[],a:[],src:'Open-Meteo'}; for(var i=0;i<o.ts.length;i++){ if(o.ts[i]>Date.now()||o.ws[i]==null) continue; r.ts.push(o.ts[i]); r.s.push(o.ws[i]); r.g.push(o.wg[i]); r.a.push(o.wd[i]); } return r.ts.length?r:null; }
   return null;
 }
 function histRain(){
@@ -1202,6 +1200,7 @@ function meanOf(arr){ var s=0,n=0; for(var i=0;i<arr.length;i++){ if(arr[i]!=nul
 var chartSpec=null;
 function renderAnalysis(){
   var canLong=hasDaily(state.sel), isLong=state.range===0||state.range>30;
+  if(canLong&&!isLong&&state.range>1){ var fs=fineStart(state.sel); if(fs==null||Date.now()-fs<state.range*DAY*0.85) isLong=true; }
   if(isLong&&!canLong){ state.range=30; isLong=false; }
   document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); if(b.classList.contains('longr')) b.hidden=!canLong; });
   var stats=$('#stats'), pl=$('#phaseList'), al=$('#airList'), two=$('#histLists'); stats.textContent=''; pl.textContent=''; al.textContent=''; $('#monthBox').hidden=true;
@@ -1293,11 +1292,12 @@ function setLegend(items){ var box=$('#legend'); box.textContent='';
 var DAYFIELDS={indoor:['tavg','tmin','tmax','h','c'],outdoor:['tavg','tmin','tmax','h'],rain:['mm'],wind:['s','g']};
 function kindOfKey(k){ return k==='x-out'?'outdoor':(k==='x-rain'?'rain':(k==='x-wind'?'wind':'indoor')); }
 function hasDaily(k){ var D=state.naDay&&state.naDay[k]; return !!(D&&D.ts&&D.ts.length>1); }
+function fineStart(k){ var H=k==='x-out'?histOut():(k==='x-wind'?histWind():(k==='x-rain'?histRain():state.series[k])); return H&&H.ts&&H.ts.length?H.ts[0]:null; }
 function shortRange(){ return (state.range===0||state.range>30)?30:state.range; }
 async function fetchArchive(force){
   if(!naConfigured()||state.demo||state.archBusy) return;
   var meta=(await safe(dbGet('meta','naarch')))||{k:'naarch',keys:[]};
-  if(!force && meta.at && Date.now()-meta.at<20*HOUR){ if(!hasDaily('x-wind')||state.naDay['x-wind'].src==='Open-Meteo'){ await fetchWindArchiveFallback(); if(curTab==='verlauf'){ renderChips(); renderAnalysis(); } } return; }
+  if(!force && meta.at && Date.now()-meta.at<20*HOUR) return;
   state.archBusy=true; renderNaStatus(); var first=!meta.last;
   try{
     if(first) logLine('Lade Netatmo-Langzeitdaten (einmalig, kann eine Minute dauern) …');
@@ -1309,7 +1309,6 @@ async function fetchArchive(force){
       if(j.stations[si].loc) state.naLoc=j.stations[si].loc;
       for(var ai=0;ai<arch.length;ai++){ var a=arch[ai]; if(a.error) logLine('Netatmo-Archiv '+({'x-wind':'Wind','x-rain':'Regen','x-out':'Außen'}[a.key]||a.key)+': '+a.error);
         var rows=(a.rows||[]).filter(function(x){ return Array.isArray(x); }); if(!rows.length) continue;
-        if(a.key==='x-wind'&&state.naDay['x-wind']&&state.naDay['x-wind'].src==='Open-Meteo') await safe(dbDel('meta','nd:x-wind'));
         var D=await mergeHist('nd:'+a.key,DAYFIELDS[a.kind],rows,100000); D.kind=a.kind; D.src='Netatmo'; state.naDay[a.key]=D; await safe(dbPut('meta',D));
         if(keys.indexOf(a.key)<0) keys.push(a.key); last=Math.max(last,rows[rows.length-1][0]); } }
     meta.keys=keys; meta.last=last; meta.at=Date.now(); await safe(dbPut('meta',meta));
@@ -1317,7 +1316,7 @@ async function fetchArchive(force){
     state.archErr=null; state.archInfo={at:meta.at,keys:keys.length,first:keys.reduce(function(m,k){ var D=state.naDay[k]; return D&&D.ts.length&&(!m||D.ts[0]<m)?D.ts[0]:m; },null)};
   }catch(e){ logLine('Netatmo-Archiv: '+e.message); state.archErr=e.message; }
   finally{ state.archBusy=false; renderNaStatus(); }
-  if(!hasDaily('x-wind')||(state.naDay['x-wind']&&state.naDay['x-wind'].src==='Open-Meteo')){ if(state.naLoc&&state.na) state.na.loc=state.naLoc; await fetchWindArchiveFallback(); }
+
   if(curTab==='verlauf'){ renderChips(); renderAnalysis(); }
 }
 function monthKey(ts){ var d=new Date(ts); return d.getFullYear()*12+d.getMonth(); }
@@ -1417,24 +1416,6 @@ function drawMonthChart(cv,rows,met){
     g.fillStyle=cssVar('--hum'); var yc=Y(r.cur); g.fillRect(cx+1,Math.min(yc,y0),bw,Math.abs(y0-yc));
     g.fillStyle=cssVar('--muted'); g.textAlign='center'; g.fillText(monthLabel(r.k,false).replace('.',''),cx,H-10); });
   if(sc.lo<=0&&sc.hi>=0){ g.strokeStyle=cssVar('--ink'); g.globalAlpha=.6; } else { g.strokeStyle=cssVar('--line'); } g.beginPath(); g.moveTo(x0,Math.round(y0)+.5); g.lineTo(x1,Math.round(y0)+.5); g.stroke(); g.globalAlpha=1;
-}
-
-/* --- Wind-Archiv als Ersatz über Open-Meteo, falls Netatmo keine Tageswerte liefert --- */
-function ymd(ts){ var d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-async function fetchWindArchiveFallback(){
-  var D=state.naDay['x-wind']; if(D&&D.ts&&D.ts.length&&D.src!=='Open-Meteo') return;
-  var loc=state.settings.lat!=null?{lat:state.settings.lat,lon:state.settings.lon}:(state.na&&state.na.loc);
-  if(!loc) { logLine('Wind-Archiv: kein Standort bekannt. Wohnort in den Einstellungen eintragen.'); return; }
-  var startTs=Object.keys(state.naDay).reduce(function(m,k){ var X=state.naDay[k]; return X&&X.ts&&X.ts.length&&X.ts[0]<m?X.ts[0]:m; },Date.now()-3*365*DAY);
-  if(D&&D.ts&&D.ts.length){ if(Date.now()-D.fetched<20*HOUR) return; startTs=D.ts[D.ts.length-1]-3*DAY; }
-  try{
-    var url='https://archive-api.open-meteo.com/v1/archive?latitude='+loc.lat+'&longitude='+loc.lon+'&start_date='+ymd(startTs)+'&end_date='+ymd(Date.now()-2*DAY)+'&daily=wind_speed_10m_max,wind_gusts_10m_max&timezone=Europe%2FBerlin';
-    var r=await withTimeout(fetch(url),60000,'Zeitüberschreitung'); var j=await r.json(); if(!j.daily) throw new Error(j.reason||'keine Daten');
-    var rows=j.daily.time.map(function(t,i){ return [new Date(t+'T00:00:00').getTime(), j.daily.wind_speed_10m_max[i], j.daily.wind_gusts_10m_max[i]]; });
-    var M=await mergeHist('nd:x-wind',['s','g'],rows,100000); M.kind='wind'; M.src='Open-Meteo'; M.fetched=Date.now(); state.naDay['x-wind']=M; await safe(dbPut('meta',M));
-    var meta=(await safe(dbGet('meta','naarch')))||{k:'naarch',keys:[]}; if(meta.keys.indexOf('x-wind')<0){ meta.keys.push('x-wind'); await safe(dbPut('meta',meta)); }
-    logLine('Wind-Archiv vom Wetterdienst geladen ('+rows.length+' Tage).');
-  }catch(e){ logLine('Wind-Archiv (Wetterdienst): '+e.message); }
 }
 
 /* --- Jahr kumuliert: laufende Summe ab 1. Januar, Jahre übereinander --- */
