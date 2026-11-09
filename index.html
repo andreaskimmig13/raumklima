@@ -371,6 +371,7 @@ footer{font-size:.82rem;color:var(--muted)}
         <label class="f">Feuchte-Schwelle Wohnräume (%)<input id="setThr" type="number" min="40" max="90" step="1"></label>
         <label class="f">Feuchte-Schwelle Bad (%)<input id="setThrBath" type="number" min="40" max="95" step="1"></label>
         <label class="f">Feuchtephase ab (Minuten)<input id="setMinPhase" type="number" min="10" max="600" step="5"></label>
+        <label class="f">Lüftungserkennung<select id="setAirSens"><option value="weniger">weniger empfindlich</option><option value="normal">normal</option><option value="empfindlich">empfindlich</option></select></label>
         <label class="f">Automatisch abrufen beim Öffnen<select id="setAuto"><option value="1">ja</option><option value="0">nein</option></select></label>
         <label class="f">… wenn letzter Abruf älter als (Stunden)<input id="setAutoH" type="number" min="0" max="72" step="1"></label>
         <label class="f">Wohnort für Außenwetter<input id="setPlace" type="text" placeholder="z. B. Freiburg"></label>
@@ -411,8 +412,8 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-06 20:30</p>
-    <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperaturstürzen und kann sich irren.</p>
+    <p class="num">App-Version 2026-11-09 07:30</p>
+    <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
 </div>
@@ -525,20 +526,40 @@ function humidPhases(S,thr,minDur){ var out=[],start=-1,end=-1,maxH=0;
   if(start>=0) close();
   return out;
 }
-function airingEvents(S){ var out=[], n=S.ts.length, i=0;
-  function cont(a,b){ return S.ts[b]-S.ts[a]<=2*MIN && S.q[a]>=2 && S.q[b]>=2; }
+var AIR_SENS={weniger:{dT:0.7,dA:1.3,cT:0.4,cA:0.8},normal:{dT:0.45,dA:0.9,cT:0.25,cA:0.5},empfindlich:{dT:0.3,dA:0.6,cT:0.15,cA:0.35}};
+function airingEvents(S,sens){ // erkennt Lüften an Temperatursturz und/oder Abfall der absoluten Feuchte (Minutenwerte)
+  var P=AIR_SENS[sens]||AIR_SENS.normal, out=[], n=S.ts.length, i=0, A=new Array(n);
+  for(var x=0;x<n;x++) A[x]=absHum(S.t[x],S.h[x]);
+  function cont(a,b){ return S.ts[b]-S.ts[a]<=3*MIN && S.q[a]>=2 && S.q[b]>=2; }
+  function hit(dT,dA){ return dT>=P.dT || (dA>=P.dA && dT>=0.1) || (dT>=P.cT && dA>=P.cA); }
   while(i<n-2){
     if(S.q[i]<2){ i++; continue; }
+    // Ausgangswert: höchster Wert der letzten 3 Minuten, damit ein schon laufender Abfall mitzählt
+    var bT=S.t[i], bA=A[i]; for(var q=i-1;q>=0&&i-q<=3&&cont(q,q+1);q--){ if(S.t[q]>bT) bT=S.t[q]; if(A[q]>bA) bA=A[q]; }
     var j=-1;
-    for(var k=i+1;k<n && S.ts[k]-S.ts[i]<=10*MIN;k++){ if(!cont(k-1,k)) break; if(S.t[i]-S.t[k]>=0.8){ j=k; break; } }
+    for(var k=i+1;k<n && S.ts[k]-S.ts[i]<=10*MIN;k++){ if(!cont(k-1,k)) break; if(hit(bT-S.t[k],bA-A[k])){ j=k; break; } }
     if(j<0){ i++; continue; }
-    var st=i; for(var s=i;s<=j;s++){ if(S.t[s]>=S.t[i]-0.15) st=s; }
-    var minI=j, m=j;
-    while(m+1<n && cont(m,m+1) && S.ts[m+1]-S.ts[st]<=8*HOUR){ m++; if(S.t[m]<S.t[minI]) minI=m; if(S.t[m]>S.t[minI]+0.5) break; }
-    var end=minI; for(var e=minI;e<=m;e++){ if(S.t[e]>S.t[minI]+0.3) break; if(S.t[e]<=S.t[minI]+0.1) end=e; }
-    var dur=S.ts[end]-S.ts[st]+MIN, drop=S.t[st]-S.t[minI];
-    out.push({from:S.ts[st], to:S.ts[end]+MIN, dur:dur, drop:drop, t0:S.t[st], tMin:S.t[minI], h0:S.h[st], hEnd:S.h[end],
-      kind: dur<=15*MIN?'stoss':(dur<=30*MIN?'lang':'offen'), forgotten: dur>45*MIN||drop>4});
+    var st=i; for(var s0=i;s0<=j;s0++){ if(S.t[s0]>=bT-0.1&&A[s0]>=bA-0.25) st=s0; }
+    var score=function(k){ return (S.t[st]-S.t[k])/P.dT+(A[st]-A[k])/P.dA; };
+    var best=j, bestS=score(j), m=j, minT=j;
+    while(m+1<n && cont(m,m+1) && S.ts[m+1]-S.ts[st]<=8*HOUR){ m++; var sc=score(m); if(S.t[m]<S.t[minT]) minT=m;
+      if(sc>bestS){ bestS=sc; best=m; } else if(sc<bestS*0.6 || S.ts[m]-S.ts[best]>45*MIN) break; }
+    // Ende: solange es noch deutlich bergab geht (Abfall über 10 min mindestens 30 % des steilsten Abschnitts)
+    var rates=[], maxR=0; for(var e2=st;e2<=best;e2++){ var b0=lowerBound(S.ts,S.ts[e2]-10*MIN); if(b0<st) b0=st; var rr=score(e2)-score(b0); rates.push(rr); if(rr>maxR) maxR=rr; }
+    var end=st; for(var e3=0;e3<rates.length;e3++){ if(rates[e3]>=maxR*0.3) end=st+e3; }
+    end=Math.max(st,end-Math.round(Math.min(10,(S.ts[end]-S.ts[st])/MIN/3)));
+    // Nur zählen, wenn die Werte unter das Niveau vor dem Ereignis fallen (sonst z. B. Abklingen nach dem Duschen oder Kochen)
+    var bl=[], blA=[]; for(var u=st-1;u>=0&&S.ts[st]-S.ts[u]<=90*MIN;u--){ if(S.ts[st]-S.ts[u]>=20*MIN&&S.q[u]>=2){ bl.push(S.t[u]); blA.push(A[u]); } }
+    if(bl.length>=20){ bl.sort(function(p1,p2){return p1-p2;}); blA.sort(function(p1,p2){return p1-p2;});
+      var medT=bl[bl.length>>1], medA=blA[blA.length>>1], minA=Infinity, minTT=Infinity;
+      for(var v=st;v<n&&S.ts[v]-S.ts[st]<=40*MIN&&v<=m;v++){ if(A[v]<minA) minA=A[v]; if(S.t[v]<minTT) minTT=S.t[v]; }
+      if(!(minTT<=medT-0.1 || minA<=medA-0.3)){ i=Math.max(m,i+1); continue; } }
+    var drop=Math.max(0,S.t[st]-S.t[minT]), dA=A[st]-A[best], dur=S.ts[end]-S.ts[st]+MIN;
+    var ev={from:S.ts[st], to:S.ts[end]+MIN, dur:dur, drop:drop, dAbs:dA, t0:S.t[st], tMin:S.t[minT], h0:S.h[st], hEnd:S.h[end],
+      kind: dur<=15*MIN?'stoss':(dur<=30*MIN?'lang':'offen'), forgotten: dur>45*MIN||drop>4};
+    var prev=out[out.length-1];
+    if(prev && ev.from-prev.to<=10*MIN){ prev.to=Math.max(prev.to,ev.to); prev.dur=prev.to-prev.from; prev.drop=Math.max(prev.drop,ev.drop); prev.kind=prev.dur<=15*MIN?'stoss':(prev.dur<=30*MIN?'lang':'offen'); prev.forgotten=prev.dur>45*MIN||prev.drop>4; }
+    else out.push(ev);
     i=Math.max(m,i+1);
   }
   return out;
@@ -560,7 +581,7 @@ function analyze(sensor, S, from, to, st, outdoorAt){
     var best=0; hrs.forEach(function(v,hh){ if(v>best){ best=v; res.co2TopHour=hh; } }); }
   res.phases=humidPhases(R,thr,st.minPhase);
   res.phases.forEach(function(p){ if(p.dur>res.longestPhase) res.longestPhase=p.dur; res.startHours[new Date(p.from).getHours()]++; });
-  res.events=airingEvents(R);
+  res.events=airingEvents(R,st.airSens);
   var perDay={}; for(var k=0;k<n;k++){ if(R.q[k]>=2){ var d=localDayKey(R.ts[k]); perDay[d]=(perDay[d]||0)+1; } }
   res.airDays=Object.keys(perDay).filter(function(d){return perDay[d]>=600;}).length;
   res.days=Math.max(1,(Math.min(to,R.ts[n-1])-Math.max(from,R.ts[0]))/DAY);
@@ -682,7 +703,7 @@ function makeDemo(now){
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
 var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null, naDay:{}};
-var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true, naUrl:'', naKey:''};
+var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true, naUrl:'', naKey:'', airSens:'normal'};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 var statusTimer=null;
@@ -1293,7 +1314,7 @@ function renderAnalysis(){
   A.events.slice(-8).reverse().forEach(function(e){
     var kind={stoss:'Stoßlüften',lang:'länger gelüftet',offen:'lange offen'}[e.kind];
     var li=el('div','li'), left=el('span'); left.appendChild(el('span',null,fmtDateTime(e.from)+' ')); left.appendChild(el('span','pill '+(e.kind==='stoss'?'ok':(e.forgotten?'bad':'warn')),kind));
-    li.appendChild(left); li.appendChild(el('span','r',fmtDur(e.dur)+' · −'+fmt1(e.drop)+' K')); al.appendChild(li); });
+    li.appendChild(left); li.appendChild(el('span','r',fmtDur(e.dur)+' · −'+fmt1(e.drop)+' K'+(e.dAbs!=null&&e.dAbs>=0.3?' · −'+fmt1(e.dAbs)+' g/m³':''))); al.appendChild(li); });
   drawChart();
 }
 function renderSpecial(stats,c){
@@ -1750,7 +1771,7 @@ function renderNaStatus(){ var p=$('#naStatus'); if(!p) return; if(!naConfigured
   a.style.color=''; if(!keys.length){ a.textContent='Langzeitdaten: noch keine. Sie werden nach dem nächsten Abruf geladen, oder tippe auf „Langzeitdaten laden“.'; return; }
   var first=keys.reduce(function(m,k){ var t=state.naDay[k].ts[0]; return !m||t<m?t:m; },null);
   a.textContent='Langzeitdaten: '+keys.length+' Module, Tageswerte seit '+new Date(first).toLocaleDateString('de-DE')+'.'; }
-function fillSettings(){ var st=state.settings; $('#setNaUrl').value=st.naUrl||''; $('#setNaKey').value=st.naKey||''; var fl=st.floors||DEFAULTS.floors; $('#setF0').value=fl[0]; $('#setF1').value=fl[1]; $('#setF2').value=fl[2]; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
+function fillSettings(){ var st=state.settings; $('#setNaUrl').value=st.naUrl||''; $('#setNaKey').value=st.naKey||''; var fl=st.floors||DEFAULTS.floors; $('#setF0').value=fl[0]; $('#setF1').value=fl[1]; $('#setF2').value=fl[2]; $('#setThr').value=st.thr; $('#setThrBath').value=st.thrBath; $('#setMinPhase').value=st.minPhase; $('#setAuto').value=st.autoSync===false?'0':'1'; $('#setAirSens').value=st.airSens||'normal'; $('#setAutoH').value=st.autoAfterH==null?3:st.autoAfterH; $('#setPlace').value=st.place||''; $('#setLat').value=st.lat==null?'':st.lat; $('#setLon').value=st.lon==null?'':st.lon; }
 async function boot2(){
   await loadAll();
   state.demo=!state.sensors.length&&!naConfigured();
@@ -1785,7 +1806,7 @@ $('#btnBackup').addEventListener('click',exportBackup);
 $('#fileImport').addEventListener('change',function(e){ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=''; });
 $('#btnSaveSettings').addEventListener('click',async function(){ var st=state.settings;
   var fl=st.floors||DEFAULTS.floors; st.floors=[$('#setF0').value.trim()||fl[0],$('#setF1').value.trim()||fl[1],$('#setF2').value.trim()||fl[2]];
-  st.thr=clamp(+$('#setThr').value,40,90,62); st.thrBath=clamp(+$('#setThrBath').value,40,95,70); st.minPhase=clamp(+$('#setMinPhase').value,10,600,60); st.autoSync=$('#setAuto').value==='1'; st.autoAfterH=clamp(+$('#setAutoH').value,0,72,3);
+  st.thr=clamp(+$('#setThr').value,40,90,62); st.thrBath=clamp(+$('#setThrBath').value,40,95,70); st.minPhase=clamp(+$('#setMinPhase').value,10,600,60); st.autoSync=$('#setAuto').value==='1'; st.airSens=$('#setAirSens').value; st.autoAfterH=clamp(+$('#setAutoH').value,0,72,3);
   var newPlace=$('#setPlace').value.trim(), latIn=$('#setLat').value.trim(), lonIn=$('#setLon').value.trim(), placeChanged=newPlace!==(st.place||'');
   st.place=newPlace;
   if(latIn!==''&&lonIn!==''&&!placeChanged){ st.lat=clamp(+latIn,-90,90,st.lat); st.lon=clamp(+lonIn,-180,180,st.lon); }
