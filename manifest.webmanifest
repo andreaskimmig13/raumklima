@@ -1,0 +1,32 @@
+{
+ "name": "Hausklima",
+ "short_name": "Hausklima",
+ "description": "Temperatur, Luftfeuchte und Lüften im Haus – mit ThermoPro-Sensoren und Netatmo",
+ "lang": "de",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#14506f",
+ "theme_color": "#1f6f9f",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-maskable-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}

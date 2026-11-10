@@ -1,4 +1,4 @@
-# Raumklima-Logbuch
+# Hausklima
 
 Web-App für ThermoPro/TempPro-Sensoren (TP357, TP358, TP359, TP357S): Verlauf per Bluetooth abrufen, lokal im Browser speichern und auswerten – Feuchtephasen, erkannte Lüftungen, Empfehlungen je Raum.
 

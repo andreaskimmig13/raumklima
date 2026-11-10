@@ -3,8 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="application-name" content="Hausklima">
+<meta name="apple-mobile-web-app-title" content="Hausklima">
+<meta name="mobile-web-app-capable" content="yes">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
-<title>Raumklima-Logbuch</title>
+<title>Hausklima</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="theme-color" content="#1f6f9f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -261,7 +267,7 @@ footer{font-size:.82rem;color:var(--muted)}
   <header class="top">
     <div>
       <div class="eyebrow">Temperatur · Luftfeuchte · Lüften</div>
-      <h1>Raumklima-Logbuch</h1>
+      <h1>Hausklima</h1>
     </div>
   </header>
 
@@ -412,7 +418,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-10 20:10</p>
+    <p class="num">App-Version 2026-11-10 20:40</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -1748,13 +1754,13 @@ function saveFile(name,text,type){ var blob=new Blob([text],{type:type}), a=docu
 function exportCsv(){
   var rows=['sensor;raum;zeit;temperatur_c;luftfeuchte_pct;co2_ppm;aufloesung'];
   state.sensors.forEach(function(s){ var S=state.series[s.id]; if(!S) return; for(var i=0;i<S.ts.length;i++) rows.push([s.btName||s.id,s.name,new Date(S.ts[i]).toISOString(),String(S.t[i]).replace('.',','),S.h[i],S.c&&S.c[i]?S.c[i]:'',S.q[i]>=2?'minute':'grob'].join(';')); });
-  saveFile('raumklima-'+new Date().toISOString().slice(0,10)+'.csv',rows.join('\n'),'text/csv'); setStatus('CSV erstellt ('+(rows.length-1).toLocaleString('de-DE')+' Zeilen).');
+  saveFile('hausklima-'+new Date().toISOString().slice(0,10)+'.csv',rows.join('\n'),'text/csv'); setStatus('CSV erstellt ('+(rows.length-1).toLocaleString('de-DE')+' Zeilen).');
 }
 async function exportBackup(){
   if(state.demo){ setStatus('Beispieldaten werden nicht gesichert.'); return; }
   var out={app:'raumklima-logbuch',v:1,created:Date.now(),settings:state.settings,sensors:state.sensors.map(stripSensor),days:[]};
   for(var i=0;i<state.sensors.length;i++){ var list=(await safe(dbBucketsFor(state.sensors[i].id)))||[]; list.forEach(function(b){ out.days.push({sid:b.sid,day:b.day,t:Array.from(b.t),h:Array.from(b.h),q:Array.from(b.q),c:b.c?Array.from(b.c):undefined}); }); }
-  saveFile('raumklima-sicherung-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(out),'application/json'); setStatus('Sicherung erstellt.');
+  saveFile('hausklima-sicherung-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(out),'application/json'); setStatus('Sicherung erstellt.');
 }
 async function importBackup(file){
   try{ var j=JSON.parse(await file.text()); if(j.app!=='raumklima-logbuch') throw new Error('Das ist keine Sicherung dieser App.');

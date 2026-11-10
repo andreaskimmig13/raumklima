@@ -1,12 +1,12 @@
-# Netatmo im Raumklima-Logbuch einrichten
+# Netatmo in Hausklima einrichten
 
-Das Raumklima-Logbuch holt die Netatmo-Werte über eine kleine Brücke in deinem eigenen Google-Konto (Google Apps Script). Der Netatmo-Zugang liegt damit nicht im Browser auf dem Handy. Einmalig etwa 15 Minuten, am besten am PC.
+Hausklima holt die Netatmo-Werte über eine kleine Brücke in deinem eigenen Google-Konto (Google Apps Script). Der Netatmo-Zugang liegt damit nicht im Browser auf dem Handy. Einmalig etwa 15 Minuten, am besten am PC.
 
 ## 1. Netatmo-App anlegen
 
 1. Auf [dev.netatmo.com](https://dev.netatmo.com) mit deinem normalen Netatmo-Konto anmelden.
 2. Oben auf **My apps** → **Create**.
-3. Einen Namen (z. B. „Raumklima“) und eine kurze Beschreibung eintragen. Pflichtfelder wie Kontakt-E-Mail ausfüllen, Bedingungen bestätigen, **Save**.
+3. Einen Namen (z. B. „Hausklima“) und eine kurze Beschreibung eintragen. Pflichtfelder wie Kontakt-E-Mail ausfüllen, Bedingungen bestätigen, **Save**.
 4. Auf der Seite der App stehen jetzt **client ID** und **client secret**. Beide kopieren.
 5. Weiter unten auf derselben Seite beim **Token generator** den Scope **read_station** auswählen und **Generate Token** klicken, dann den Zugriff bestätigen.
 6. Den angezeigten **Refresh Token** kopieren.

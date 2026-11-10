@@ -1,8 +1,8 @@
 /**
- * Raumklima-Logbuch – Netatmo-Brücke (Google Apps Script)
+ * Hausklima – Netatmo-Brücke (Google Apps Script)
  *
  * Holt die Messwerte deiner Netatmo-Wetterstation und gibt sie an das
- * Raumklima-Logbuch weiter. Der Netatmo-Zugang bleibt in deinem Google-Konto.
+ * Hausklima weiter. Der Netatmo-Zugang bleibt in deinem Google-Konto.
  *
  * Einrichtung (Kurzfassung, ausführlich in NETATMO.md):
  *  1. Unten bei EINRICHTUNG die vier Werte eintragen.
