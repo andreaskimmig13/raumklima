@@ -67,7 +67,7 @@ function doGet(e) {
         if (st.wind) st.archive.push(windDaily_(dev._id, st.wind.id, since));
       }
       if (days) {
-        var begin = Math.floor(Date.now() / 1000) - days * 86400;
+        var begin = Math.floor((Date.now() / 1000 - days * 86400) / 3600) * 3600; // auf volle Stunde, damit sich Stundensummen nicht überlappen
         st.indoor.forEach(function (ind) {
           ind.history = measure_(dev._id, ind.module, 'temperature,humidity,co2', begin);
         });
@@ -125,7 +125,9 @@ function windDaily_(devId, modId, since) {
 }
 
 function daily_(devId, modId, types, since) {
-  var out = [], begin = since, now = Math.floor(Date.now() / 1000);
+  var out = [], now = Math.floor(Date.now() / 1000);
+  var d0 = new Date(since * 1000); d0.setHours(0, 0, 0, 0); // auf Mitternacht, damit Tageswerte echte Kalendertage sind
+  var begin = Math.floor(d0.getTime() / 1000);
   for (var guard = 0; guard < 12 && begin < now; guard++) {
     var params = { device_id: devId, scale: '1day', type: types, date_begin: String(begin), optimize: 'false', real_time: 'false', limit: '1024' };
     if (modId) params.module_id = modId;

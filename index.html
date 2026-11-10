@@ -412,7 +412,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-09 07:30</p>
+    <p class="num">App-Version 2026-11-10 20:10</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -752,6 +752,12 @@ async function loadAll(){
   var nm=await safe(dbGet('meta','netatmo')); if(nm&&nm.na) state.na=nm.na; var nh=await safe(dbGet('meta','naout')); if(nh) state.naOutHist=nh;
   var na2=await safe(dbGet('meta','naarch')); if(na2&&na2.keys){ for(var ak=0;ak<na2.keys.length;ak++){ var Dd=await safe(dbGet('meta','nd:'+na2.keys[ak])); if(Dd&&Dd.src!=='Open-Meteo'){ Dd.kind=Dd.kind||kindOfKey(na2.keys[ak]); state.naDay[na2.keys[ak]]=Dd; } } }
   var nw=await safe(dbGet('meta','nawind')); if(nw) state.naWindHist=nw; var nr=await safe(dbGet('meta','narain')); if(nr) state.naRainHist=nr;
+  var fx=await safe(dbGet('meta','fix'));
+  if(!fx||!(fx.v>=2)){ // Regenwerte konnten durch überlappende Abrufe doppelt gezählt werden: Stundenwerte verwerfen, 14 Tage und Archiv neu laden
+    if(nr){ state.naRainHist=null; await safe(dbPut('meta',{k:'narain',ts:[],mm:[]})); }
+    if(nm){ nm.histAt=0; nm.fetched=0; await safe(dbPut('meta',nm)); }
+    if(na2&&na2.last){ na2.last=0; na2.at=0; await safe(dbPut('meta',na2)); }
+    await safe(dbPut('meta',{k:'fix',v:2})); }
 }
 async function safe(p){ try{ return await p; }catch(e){ return null; } }
 
@@ -981,18 +987,20 @@ async function fetchNetatmo(force){
       if(recs.length) await storeRecords(sid,recs);
       sensor.lastSync=Date.now(); sensor.battery=ind.battery; sensor.reachable=ind.reachable; await safe(dbPut('sensors',stripSensor(sensor))); na.indoor++; }
     if(st.outdoor&&st.outdoor.t!=null){ na.outdoor={t:st.outdoor.t,h:st.outdoor.h,ts:st.outdoor.ts,battery:st.outdoor.battery,reachable:st.outdoor.reachable};
-      if(Array.isArray(st.outdoor.history)) state.naOutHist=await mergeHist('naout',['t','h'],st.outdoor.history); }
-    if(st.wind){ if(Array.isArray(st.wind.history)&&st.wind.history.length) state.naWindHist=await mergeHist('nawind',['s','g','a'],st.wind.history); na.wind=stripHist(st.wind);
+      if(Array.isArray(st.outdoor.history)) state.naOutHist=await mergeHist('naout',['t','h'],st.outdoor.history,120,{replace:true}); }
+    if(st.wind){ if(Array.isArray(st.wind.history)&&st.wind.history.length) state.naWindHist=await mergeHist('nawind',['s','g','a'],st.wind.history,120,{replace:true}); na.wind=stripHist(st.wind);
       na.windDiag={found:true,ts:st.wind.ts,reachable:st.wind.reachable,battery:st.wind.battery,strength:st.wind.strength,hist:Array.isArray(st.wind.history)?st.wind.history.length:null,histErr:st.wind.historyError||(st.wind.history&&st.wind.history.error)||null,keys:st.wind.keys||null}; }
-    if(st.rain){ if(Array.isArray(st.rain.history)) state.naRainHist=await mergeHist('narain',['mm'],st.rain.history); na.rain=stripHist(st.rain); } }
+    if(st.rain){ if(Array.isArray(st.rain.history)) state.naRainHist=await mergeHist('narain',['mm'],st.rain.history,120,{slot:hourSlot,replace:true}); na.rain=stripHist(st.rain); } }
   state.na=na; meta.fetched=na.fetched; if(days) meta.histAt=Date.now(); meta.na=na; await safe(dbPut('meta',meta));
   return na;
 }
 function stripHist(o){ var c={}; Object.keys(o).forEach(function(k){ if(k!=='history') c[k]=o[k]; }); return c; }
-async function mergeHist(key,fields,rows,keepDays){
-  var old=(await safe(dbGet('meta',key)))||{k:key,ts:[]}, map={};
-  old.ts.forEach(function(ts,i){ map[ts]=fields.map(function(f){ return old[f]?old[f][i]:null; }); });
-  rows.forEach(function(row){ if(row[1]==null) return; map[row[0]]=fields.map(function(f,ix){ return row[ix+1]==null?null:row[ix+1]; }); });
+async function mergeHist(key,fields,rows,keepDays,opt){ // opt.slot: Zeitstempel auf festes Raster legen; opt.replace: alte Werte im neu gelieferten Zeitraum verwerfen (verhindert doppelt gezählte Summen)
+  opt=opt||{}; var slot=opt.slot||function(t){ return t; };
+  var old=(await safe(dbGet('meta',key)))||{k:key,ts:[]}, map={}, good=rows.filter(function(row){ return row[1]!=null; });
+  var cut=opt.replace&&good.length?slot(good[0][0]):Infinity;
+  old.ts.forEach(function(ts,i){ var k=slot(ts); if(k>=cut) return; map[k]=fields.map(function(f){ return old[f]?old[f][i]:null; }); });
+  good.forEach(function(row){ map[slot(row[0])]=fields.map(function(f,ix){ return row[ix+1]==null?null:row[ix+1]; }); });
   var keys=Object.keys(map).map(Number).filter(function(ts){ return ts>Date.now()-(keepDays||120)*DAY; }).sort(function(a,b){return a-b;});
   var hist={k:key,ts:keys}; fields.forEach(function(f,ix){ hist[f]=keys.map(function(k){ return map[k][ix]; }); });
   await safe(dbPut('meta',hist)); return hist;
@@ -1352,6 +1360,7 @@ function renderSpecial(stats,c){
   drawChart();
 }
 function noSpecial(stats){ stats.appendChild(statEl('–','keine Daten für diesen Zeitraum')); chartSpec=null; setLegend([]); drawChart(); }
+function hourSlot(ts){ return Math.floor(ts/HOUR)*HOUR; }
 function startOfDay(ts){ var d=new Date(ts); d.setHours(0,0,0,0); return d.getTime(); }
 function setLegend(items){ var box=$('#legend'); box.textContent='';
   items.forEach(function(it){ var sp=el('span'), i=el('i'), k=it[0];
@@ -1377,7 +1386,7 @@ async function fetchArchive(force){
     if(first) logLine('Lade Netatmo-Langzeitdaten (einmalig, kann eine Minute dauern) …');
     var firsts=Object.keys(state.naDay).filter(function(k){ return hasDaily(k); }).map(function(k){ return state.naDay[k].ts[0]; }), minFirst=firsts.length?Math.min.apply(null,firsts):null;
     var lagging=minFirst!=null && (!hasDaily('x-wind')&&state.na&&state.na.windDiag&&state.na.windDiag.found || firsts.some(function(f){ return f-minFirst>30*DAY; }));
-    var since=(force||lagging||!meta.last)?0:Math.floor((meta.last-3*DAY)/1000);
+    var since=(force||lagging||!meta.last)?0:Math.floor(startOfDay(meta.last-3*DAY)/1000);
     if(since===0&&meta.last) logLine('Lade Netatmo-Langzeitdaten komplett neu …');
     var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+'&archive='+since;
     var r=await withTimeout(fetch(url,{redirect:'follow'}),300000,'Das Netatmo-Archiv antwortet nicht.'); var j=await r.json(); if(j.error) throw new Error(j.error);
@@ -1387,7 +1396,7 @@ async function fetchArchive(force){
       for(var ai=0;ai<arch.length;ai++){ var a=arch[ai]; if(a.key==='x-wind') state.archWindDiag={rows:(a.rows||[]).filter(function(x){return Array.isArray(x);}).length,error:a.error||((a.rows||[]).find(function(x){return x&&x.error;})||{}).error||null,types:a.types||null};
         if(a.error) logLine('Netatmo-Archiv '+({'x-wind':'Wind','x-rain':'Regen','x-out':'Außen'}[a.key]||a.key)+': '+a.error);
         var rows=(a.rows||[]).filter(function(x){ return Array.isArray(x); }); if(!rows.length) continue;
-        var D=await mergeHist('nd:'+a.key,DAYFIELDS[a.kind],rows,100000); D.kind=a.kind; D.src='Netatmo'; state.naDay[a.key]=D; await safe(dbPut('meta',D));
+        var D=await mergeHist('nd:'+a.key,DAYFIELDS[a.kind],rows,100000,{slot:startOfDay,replace:true}); D.kind=a.kind; D.src='Netatmo'; state.naDay[a.key]=D; await safe(dbPut('meta',D));
         if(keys.indexOf(a.key)<0) keys.push(a.key); last=Math.max(last,rows[rows.length-1][0]); } }
     meta.keys=keys; meta.last=last; meta.at=Date.now(); await safe(dbPut('meta',meta));
     logLine('Netatmo-Langzeitdaten aktualisiert'+(keys.length?' ('+keys.length+' Module).':'.'));
