@@ -81,6 +81,10 @@ canvas{display:block;width:100%;height:300px;touch-action:pan-y}
 .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{border:0;border-radius:0;min-height:36px;padding:6px 12px;background:transparent}
 .seg button[aria-pressed="true"]{background:var(--hum);color:var(--btn-ink)}
+.rnav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+.rnav button{min-width:44px;min-height:36px;padding:2px 10px;font-size:20px;line-height:1}
+.rnav button:disabled{opacity:.35}
+.rnav span{font-weight:600;text-align:center;flex:1}
 .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--muted)}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
@@ -321,12 +325,13 @@ footer{font-size:.82rem;color:var(--muted)}
         <button type="button" data-range="1" aria-pressed="false">24 h</button>
         <button type="button" data-range="7" aria-pressed="true">7 T</button>
         <button type="button" data-range="14" aria-pressed="false">14 T</button>
-        <button type="button" data-range="30" aria-pressed="false">30 T</button>
-        <button type="button" data-range="365" aria-pressed="false" class="longr" hidden>1 J</button>
+        <button type="button" data-range="30" aria-pressed="false">Monat</button>
+        <button type="button" data-range="365" aria-pressed="false" class="longr" hidden>Jahr</button>
         <button type="button" data-range="0" aria-pressed="false" class="longr" hidden>Alles</button>
       </div>
     </div>
     <div class="panel">
+      <div class="rnav" id="rNav"><button type="button" id="rPrev" aria-label="Zeitraum davor">‹</button><span id="rLabel"></span><button type="button" id="rNext" aria-label="Zeitraum danach">›</button></div>
       <div class="chartbox"><canvas id="chart" aria-label="Verlauf von Temperatur und Luftfeuchte"></canvas></div>
       <div class="legend" id="legend"></div>
       <div class="stats" id="stats"></div>
@@ -418,7 +423,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-10 20:40</p>
+    <p class="num">App-Version 2026-11-10 21:00</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -708,7 +713,7 @@ function makeDemo(now){
 /* ===== Oberfläche, Bluetooth, Speicher ===== */
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
-var state={sensors:[], series:{}, sel:null, range:7, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null, naDay:{}};
+var state={sensors:[], series:{}, sel:null, range:7, off:0, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null, naDay:{}};
 var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true, naUrl:'', naKey:'', airSens:'normal'};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
@@ -756,7 +761,7 @@ async function loadAll(){
   for(var i=0;i<state.sensors.length;i++){ var s=state.sensors[i]; state.series[s.id]=bucketsToSeries((await safe(dbBucketsFor(s.id)))||[]); }
   var o=await safe(dbGet('meta','outdoor')); if(o) state.outdoor=o;
   var nm=await safe(dbGet('meta','netatmo')); if(nm&&nm.na) state.na=nm.na; var nh=await safe(dbGet('meta','naout')); if(nh) state.naOutHist=nh;
-  var na2=await safe(dbGet('meta','naarch')); if(na2&&na2.keys){ for(var ak=0;ak<na2.keys.length;ak++){ var Dd=await safe(dbGet('meta','nd:'+na2.keys[ak])); if(Dd&&Dd.src!=='Open-Meteo'){ Dd.kind=Dd.kind||kindOfKey(na2.keys[ak]); state.naDay[na2.keys[ak]]=Dd; } } }
+  var na2=await safe(dbGet('meta','naarch')); if(na2&&na2.keys){ for(var ak=0;ak<na2.keys.length;ak++){ var Dd=await safe(dbGet('meta','nd:'+na2.keys[ak])); if(Dd&&Dd.src!=='Open-Meteo'){ Dd.kind=Dd.kind||kindOfKey(na2.keys[ak]); state.naDay[na2.keys[ak]]=dedupeDays(Dd); } } }
   var nw=await safe(dbGet('meta','nawind')); if(nw) state.naWindHist=nw; var nr=await safe(dbGet('meta','narain')); if(nr) state.naRainHist=nr;
   var fx=await safe(dbGet('meta','fix'));
   if(!fx||!(fx.v>=2)){ // Regenwerte konnten durch überlappende Abrufe doppelt gezählt werden: Stundenwerte verwerfen, 14 Tage und Archiv neu laden
@@ -1286,21 +1291,30 @@ function histRain(){
 function sliceBy(obj,keys,from,to){ var a=lowerBound(obj.ts,from), b=lowerBound(obj.ts,to+1), o={}; keys.forEach(function(k){ o[k]=obj[k].slice(a,b); }); o.ts=obj.ts.slice(a,b); return o; }
 function meanOf(arr){ var s=0,n=0; for(var i=0;i<arr.length;i++){ if(arr[i]!=null){ s+=arr[i]; n++; } } return n?s/n:null; }
 var chartSpec=null;
+function viewWin(end){ // Zeitfenster der Verlaufsansicht: Monat und Jahr als Kalenderzeitraum, sonst rollend; state.off = Schritte zurück
+  var k=state.off||0, r=state.range, d=new Date(end), w;
+  if(r===30||r===365){ var a=r===30?new Date(d.getFullYear(),d.getMonth()-k,1):new Date(d.getFullYear()-k,0,1), b=r===30?new Date(d.getFullYear(),d.getMonth()-k+1,1):new Date(d.getFullYear()-k+1,0,1);
+    w={from:a.getTime(),to:k?b.getTime()-1:end,label:r===30?a.toLocaleDateString('de-DE',{month:'long',year:'numeric'}):String(a.getFullYear())}; }
+  else { var to=end-k*r*DAY; w={from:to-r*DAY,to:to}; var f=function(t,y){ return new Date(t).toLocaleDateString('de-DE',y?{day:'numeric',month:'numeric',year:'2-digit'}:{day:'numeric',month:'numeric'}); };
+    w.label=k===0?(r===1?'letzte 24 Stunden':'letzte '+r+' Tage'):(r===1?(function(){ var o={day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}; return new Date(w.from).toLocaleString('de-DE',o)+' – '+new Date(w.to).toLocaleString('de-DE',o); })():f(w.from)+' – '+f(w.to,true)); }
+  return w;
+}
+function setNav(w,first){ var nav=$('#rNav'); if(!nav) return; nav.hidden=!w; if(!w) return; var dd=state.naDay[state.sel]; if(hasDaily(state.sel)&&dd.ts.length&&(first==null||dd.ts[0]<first)) first=dd.ts[0]; $('#rLabel').textContent=w.label; $('#rNext').disabled=!(state.off>0); $('#rPrev').disabled=first==null||w.from<=first; }
 function renderAnalysis(){
   var canLong=hasDaily(state.sel), isLong=state.range===0||state.range>30;
-  if(canLong&&!isLong&&state.range>1){ var fs=fineStart(state.sel); if(fs==null||Date.now()-fs<state.range*DAY*0.85) isLong=true; }
-  if(isLong&&!canLong){ state.range=30; isLong=false; }
+  if(canLong&&!isLong&&state.range>1){ var fs=fineStart(state.sel), w0=viewWin(Date.now()); if(fs==null||fs>w0.from+(w0.to-w0.from)*0.15) isLong=true; }
+  if(isLong&&!canLong){ if(state.range!==30) state.off=0; state.range=30; isLong=false; }
   document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); if(b.classList.contains('longr')) b.hidden=!canLong; });
   var stats=$('#stats'), pl=$('#phaseList'), al=$('#airList'), two=$('#histLists'); stats.textContent=''; pl.textContent=''; al.textContent=''; $('#monthBox').hidden=true; $('#topBox').hidden=true; $('#topBox').textContent='';
   if(isLong){ two.hidden=true; var nm=SPECIAL[state.sel]||((state.sensors.find(function(x){return x.id===state.sel;})||{}).name)||''; $('#histTitle').textContent='Verlauf: '+nm+' · Tageswerte'; return renderDaily(stats); }
-  if(canLong){ var mb=$('#monthBox'); mb.hidden=false; mb.textContent=''; var hint=el('p','small muted','Für Netatmo gibt es Tageswerte seit Einrichtung der Station. Mit „1 J“ oder „Alles“ siehst du den Langzeitverlauf und den Vergleich zum Vorjahresmonat.'); hint.style.margin='0'; mb.appendChild(hint); }
+  if(canLong){ var mb=$('#monthBox'); mb.hidden=false; mb.textContent=''; var hint=el('p','small muted','Für Netatmo gibt es Tageswerte seit Einrichtung der Station. Mit „Jahr“ oder „Alles“ siehst du den Langzeitverlauf und den Vergleich zum Vorjahresmonat.'); hint.style.margin='0'; mb.appendChild(hint); }
   var cT=cssVar('--temp'), cH=cssVar('--hum'), cC=cssVar('--co2'), cW=cssVar('--ink'), cG=cssVar('--muted');
   if(SPECIAL[state.sel]){ two.hidden=true; $('#histTitle').textContent='Verlauf: '+SPECIAL[state.sel]; return renderSpecial(stats,{cT:cT,cH:cH,cW:cW,cG:cG}); }
   two.hidden=false;
   var s=state.sensors.find(function(x){return x.id===state.sel;});
   $('#histTitle').textContent=s?'Verlauf: '+s.name:'Verlauf';
   if(!s){ chartSpec=null; setLegend([]); drawChart(); return; }
-  var S=state.series[s.id]||{ts:[],t:[],h:[],q:[]}, to=S.ts.length?S.ts[S.ts.length-1]:Date.now(), from=to-state.range*DAY;
+  var S=state.series[s.id]||{ts:[],t:[],h:[],q:[]}, W0=viewWin(S.ts.length?S.ts[S.ts.length-1]:Date.now()), to=W0.to, from=W0.from; setNav(W0,S.ts.length?S.ts[0]:null);
   var A=analyze(s,S,from,to,state.settings,outdoorAtFn()), R=A.series;
   if(!A.n){ stats.appendChild(statEl('–','noch keine Messwerte')); chartSpec=null; setLegend([]); drawChart(); return; }
   var gap=function(i){ return R.ts[i]-R.ts[i-1]>(R.q[i]>=2?30*MIN:2*HOUR); };
@@ -1332,7 +1346,7 @@ function renderAnalysis(){
   drawChart();
 }
 function renderSpecial(stats,c){
-  var to=Math.floor(Date.now()/MIN)*MIN, from=to-state.range*DAY, kind=state.sel, H;
+  var W0=viewWin(Math.floor(Date.now()/MIN)*MIN), to=W0.to, from=W0.from, kind=state.sel, H; setNav(W0,fineStart(kind));
   if(kind==='x-out'){ H=histOut(); if(!H){ return noSpecial(stats); } var R=sliceBy(H,['t','h'],from,to); if(!R.ts.length) return noSpecial(stats);
     var mt=meanOf(R.t), mh=meanOf(R.h), mn=Math.min.apply(null,R.t), mx=Math.max.apply(null,R.t);
     chartSpec={from:from,to:to,ts:R.ts,gap:function(i){ return R.ts[i]-R.ts[i-1]>3*HOUR; },panels:[
@@ -1355,18 +1369,22 @@ function renderSpecial(stats,c){
     var daily=state.range>2, bars=[], bucket={};
     for(var j=0;j<P.ts.length;j++){ var v=P.mm[j]||0; var key=daily?startOfDay(P.ts[j]):P.ts[j]; bucket[key]=(bucket[key]||0)+v; }
     Object.keys(bucket).map(Number).sort(function(a,b){return a-b;}).forEach(function(k){ bars.push({from:k,to:daily?k+DAY:k+HOUR,v:Math.round(bucket[k]*10)/10}); });
-    var sum=bars.reduce(function(a,b){return a+b.v;},0), wet=daily?bars.filter(function(b){return b.v>=0.2;}).length:null, maxB=bars.reduce(function(a,b){return b.v>a.v?b:a;},{v:0});
+    var sum=bars.reduce(function(a,b){return a+b.v;},0), wet=daily?bars.filter(function(b){return b.v>=WET_MM;}).length:null, maxB=bars.reduce(function(a,b){return b.v>a.v?b:a;},{v:0});
     var maxH=Math.max.apply(null,P.mm.map(function(x){return x||0;}));
     chartSpec={from:from,to:to,ts:[],panels:[{label:daily?'mm pro Tag':'mm pro Stunde',unit:'mm',bars:bars,color:c.cH,fmt:fmt1,minLo:0,tall:true,avg:daily&&bars.length?sum/bars.length:null}],
       hoverBar:function(b){ return (daily?new Date(b.from).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric'}):fmtDateTime(b.from))+'   '+fmt1(b.v)+' mm'; }};
     setLegend(daily?[['--hum','Niederschlag pro Tag'],['avg','Tagesdurchschnitt']]:[['--hum','Niederschlag pro Stunde']]);
-    stats.appendChild(statEl(fmt1(sum)+' mm','Summe')); if(daily) stats.appendChild(statEl(String(wet),'Regentage (ab 0,2 mm)'));
+    stats.appendChild(statEl(fmt1(sum)+' mm','Summe')); if(daily) stats.appendChild(statEl(String(wet),'Regentage (ab 1 mm)'));
     stats.appendChild(statEl(maxB.v?fmt1(maxB.v)+' mm':'–',daily?'nassester Tag':'nasseste Stunde')); stats.appendChild(statEl(fmt1(maxH)+' mm','stärkste Stunde')); stats.appendChild(statEl(H.src,'Quelle'));
   }
   drawChart();
 }
 function noSpecial(stats){ stats.appendChild(statEl('–','keine Daten für diesen Zeitraum')); chartSpec=null; setLegend([]); drawChart(); }
+function dedupeDays(D){ // ältere Speicherstände konnten einen Tag mehrfach enthalten: pro Kalendertag nur den letzten Wert behalten
+  var f=DAYFIELDS[D.kind]||[], idx={}, order=[]; D.ts.forEach(function(t,i){ var k=startOfDay(t); if(!(k in idx)) order.push(k); idx[k]=i; });
+  if(order.length===D.ts.length) return D; var o=Object.assign({},D); o.ts=order; f.forEach(function(fi){ o[fi]=order.map(function(k){ return D[fi]?D[fi][idx[k]]:null; }); }); return o; }
 function hourSlot(ts){ return Math.floor(ts/HOUR)*HOUR; }
+var WET_MM=1; // Regentag: ab 1 mm (üblich in der Klimastatistik, z. B. DWD); kleinere Mengen sind oft Tau, Niesel oder Fehlzählungen der Regenwippe
 function startOfDay(ts){ var d=new Date(ts); d.setHours(0,0,0,0); return d.getTime(); }
 function setLegend(items){ var box=$('#legend'); box.textContent='';
   items.forEach(function(it){ var sp=el('span'), i=el('i'), k=it[0];
@@ -1419,7 +1437,7 @@ function aggMonths(D,kind,dayLimit){ // dayLimit: nur Tage <= Tag des Monats (f�
   for(var i=0;i<D.ts.length;i++){ var d=new Date(D.ts[i]); if(dayLimit&&d.getDate()>dayLimit.day&&monthKey(D.ts[i])%12===dayLimit.month) continue;
     var k=monthKey(D.ts[i]), m=M[k]||(M[k]={n:0,sum:{},cnt:{},min:{},max:{},wet:0,days:0}); m.days++;
     f.forEach(function(fi){ var v=D[fi][i]; if(v==null) return; m.sum[fi]=(m.sum[fi]||0)+v; m.cnt[fi]=(m.cnt[fi]||0)+1; if(m.min[fi]==null||v<m.min[fi]) m.min[fi]=v; if(m.max[fi]==null||v>m.max[fi]) m.max[fi]=v; });
-    if(kind==='rain'&&D.mm[i]!=null&&D.mm[i]>=0.2) m.wet++; }
+    if(kind==='rain'&&D.mm[i]!=null&&D.mm[i]>=WET_MM) m.wet++; }
   return M;
 }
 var MONTH_METRICS={
@@ -1432,7 +1450,7 @@ function monthValue(m,met){ if(!m) return null; var f=met[0], how=met[4];
 var monthMetric={};
 function renderDaily(stats){
   var key=state.sel, D=state.naDay[key], kind=D.kind||kindOfKey(key), c={cT:cssVar('--temp'),cTs:cssVar('--temp-soft'),cH:cssVar('--hum'),cC:cssVar('--co2'),cW:cssVar('--ink'),cG:cssVar('--muted')};
-  var lastTs=D.ts[D.ts.length-1], to=lastTs+DAY, from=state.range===0?D.ts[0]:Math.max(D.ts[0],to-state.range*DAY);
+  var lastTs=D.ts[D.ts.length-1], W0=state.range===0?null:viewWin(lastTs+DAY-1), to=W0?W0.to:lastTs+DAY, from=W0?Math.max(D.ts[0],W0.from):D.ts[0]; setNav(W0,D.ts[0]);
   var R=sliceBy(D,DAYFIELDS[kind],from,to); if(!R.ts.length) return noSpecial(stats);
   var gap=function(i){ return R.ts[i]-R.ts[i-1]>3*DAY; }, dfmt=function(ts){ return new Date(ts).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric',year:'2-digit'}); };
   var span=to-from, panels=[], lg=[];
@@ -1465,14 +1483,14 @@ function renderDaily(stats){
     var monthly=span>150*DAY, bucket={}, bars=[];
     for(var j=0;j<R.ts.length;j++){ var v=R.mm[j]||0, bk=monthly?monthKey(R.ts[j]):R.ts[j]; bucket[bk]=(bucket[bk]||0)+v; }
     Object.keys(bucket).map(Number).sort(function(a,b){return a-b;}).forEach(function(bk){ var f0=monthly?new Date(Math.floor(bk/12),bk%12,1).getTime():bk, t0=monthly?new Date(Math.floor(bk/12),bk%12+1,1).getTime():bk+DAY; bars.push({from:f0,to:t0,v:Math.round(bucket[bk]*10)/10,mk:monthly?bk:null}); });
-    var sum=R.mm.reduce(function(a,v){return a+(v||0);},0), wet=R.mm.filter(function(v){return v!=null&&v>=0.2;}).length, wd=-1; for(var q=0;q<R.ts.length;q++){ if(R.mm[q]!=null&&(wd<0||R.mm[q]>R.mm[wd])) wd=q; }
+    var sum=R.mm.reduce(function(a,v){return a+(v||0);},0), wet=R.mm.filter(function(v){return v!=null&&v>=WET_MM;}).length, wd=-1; for(var q=0;q<R.ts.length;q++){ if(R.mm[q]!=null&&(wd<0||R.mm[q]>R.mm[wd])) wd=q; }
     panels.push({label:monthly?'mm pro Monat':'mm pro Tag',unit:'mm',bars:bars,color:c.cH,fmt:fmt1,minLo:0,tall:true,avg:bars.length?sum/bars.length:null});
     lg=[['--hum',monthly?'Niederschlag pro Monat':'Niederschlag pro Tag'],['avg','Durchschnitt']];
     chartSpec={from:from,to:to,ts:[],panels:panels,hoverBar:function(b){ return (b.mk!=null?monthLabel(b.mk,true):new Date(b.from).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric',year:'2-digit'}))+'   '+fmt1(b.v)+' mm'; }};
     var years=span/(365*DAY);
     stats.appendChild(statEl(Math.round(sum).toLocaleString('de-DE')+' mm','Summe')); if(years>1.2) stats.appendChild(statEl(Math.round(sum/years).toLocaleString('de-DE')+' mm','Ø pro Jahr'));
     renderTops([{title:'Nasseste Tage',vals:R.mm,desc:true,fmt:function(v){return fmt1(v)+' mm';}}],R.ts,'Tagessumme Niederschlag');
-    stats.appendChild(statEl(String(wet),'Regentage')); if(wd>=0) stats.appendChild(statEl(fmt1(R.mm[wd])+' mm','nassester Tag, '+new Date(R.ts[wd]).toLocaleDateString('de-DE')));
+    stats.appendChild(statEl(String(wet),'Regentage (ab 1 mm)')); if(wd>=0) stats.appendChild(statEl(fmt1(R.mm[wd])+' mm','nassester Tag, '+new Date(R.ts[wd]).toLocaleDateString('de-DE')));
   }
   lg.push(['avg','Durchschnitt']); setLegend(lg.filter(function(x,i,a){ return a.findIndex(function(y){return y[0]===x[0];})===i; }));
   stats.appendChild(statEl(new Date(D.ts[0]).toLocaleDateString('de-DE'),'Daten seit'));
@@ -1540,7 +1558,7 @@ var CUM_METRICS={
            ['hot','Hitzetage','Tage',function(i,D){ return D.tmax[i]!=null&&D.tmax[i]>=30?1:0; },'Tage mit Höchstwert ab 30 °C.'],
            ['trop','Tropennächte','Tage',function(i,D){ return D.tmin[i]!=null&&D.tmin[i]>=20?1:0; },'Tage, deren Tiefstwert nicht unter 20 °C fiel.']],
   rain:[['mm','Niederschlag','mm',function(i,D){ return D.mm[i]||0; },'Laufende Regensumme seit dem 1. Januar.'],
-        ['wet','Regentage','Tage',function(i,D){ return D.mm[i]!=null&&D.mm[i]>=0.2?1:0; },'Tage mit mindestens 0,2 mm Niederschlag.']],
+        ['wet','Regentage','Tage',function(i,D){ return D.mm[i]!=null&&D.mm[i]>=WET_MM?1:0; },'Tage mit mindestens 1 mm Niederschlag.']],
   wind:[['storm','Tage mit kräftigen Böen','Tage',function(i,D){ return D.g[i]!=null&&D.g[i]>=(D.src==='Open-Meteo'?62:30)?1:0; },null]],
   indoor:[['co2days','Tage mit schlechter Luft','Tage',function(i,D){ return D.c&&D.c[i]!=null&&D.c[i]>=1000?1:0; },'Tage, an denen der CO₂-Tagesmittelwert bei 1.000 ppm oder höher lag.']]};
 var cumMetric={};
@@ -1798,11 +1816,13 @@ async function boot2(){
   else if(!state.demo && naConfigured()) setTimeout(function(){ fetchArchive(false); },1500);
   if(!state.demo){ loadOutdoor().then(function(){ renderOutdoor(); renderTips(); renderAnalysis(); }); }
 }
-document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; renderAnalysis(); renderTips(); }); });
+document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; state.off=0; renderAnalysis(); renderTips(); }); });
+$('#rPrev').addEventListener('click',function(){ state.off=(state.off||0)+1; renderAnalysis(); });
+$('#rNext').addEventListener('click',function(){ state.off=Math.max(0,(state.off||0)-1); renderAnalysis(); });
 $('#btnSyncAll').addEventListener('click',function(){ syncAll(false); });
 document.querySelectorAll('.tabs button').forEach(function(b){ b.addEventListener('click',function(){ showTab(b.dataset.tab); }); });
 $('#btnBack').addEventListener('click',function(){ showTab('uebersicht'); });
-$('#miniMore').addEventListener('click',function(){ state.sel='x-out'; state.range=7; showTab('verlauf'); });
+$('#miniMore').addEventListener('click',function(){ state.sel='x-out'; state.range=7; state.off=0; showTab('verlauf'); });
 window.addEventListener('hashchange',function(){ var h=location.hash.slice(1); if(h&&h!==curTab) showTab(h,true); });
 $('#btnCancel').addEventListener('click',function(){ state.cancel=true; setStatus('Breche ab …'); });
 $('#btnCloseStatus').addEventListener('click',function(){ $('#statusBar').hidden=true; });
