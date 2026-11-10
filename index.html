@@ -155,6 +155,10 @@ body{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .tabs button[aria-selected="true"] svg{stroke-width:2.2}
 .pane{display:flex;flex-direction:column;gap:28px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:-14px}
+#roomChips{display:block;overflow:visible}
+.chiprow{display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.chiprow+.chiprow{margin-top:4px}
+.chiprow .rowlbl{flex:0 0 auto;font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);min-width:4.6em}
 .chips button{min-height:36px;padding:6px 12px;border-radius:99px;white-space:nowrap;font-size:.88rem;flex:0 0 auto}
 .chips button[aria-pressed="true"]{background:var(--hum);border-color:var(--hum);color:var(--btn-ink)}
 .chips button.bath{border-color:var(--bath-line)}
@@ -423,7 +427,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-10 21:00</p>
+    <p class="num">App-Version 2026-11-10 21:20</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -1130,14 +1134,14 @@ function cellFor(s){
   b.addEventListener('click',function(){ state.sel=s.id; showTab('verlauf'); });
   return b;
 }
-function renderChips(){
+function renderChips(){ // Zeile „Draußen“ (Außen, Wind, Regen), Zeile „Drinnen“ (Netatmo-Innenmodule zuerst, dann die übrigen Räume)
   var box=$('#roomChips'); box.textContent='';
-  state.sensors.slice().sort(function(a,b){ return (b.floor==null?1:b.floor)-(a.floor==null?1:a.floor)||(a.pos||99)-(b.pos||99); }).forEach(function(s){
-    var b=el('button',s.type==='bad'?'bath':null,s.name); b.type='button'; b.setAttribute('aria-pressed',String(state.sel===s.id));
-    b.addEventListener('click',function(){ state.sel=s.id; renderChips(); renderAnalysis(); }); box.appendChild(b); });
-  var sp=[['x-out','Außen',histOut()],['x-wind','Wind',histWind()],['x-rain','Regen',histRain()]].filter(function(x){ return x[2]; });
-  if(sp.length){ box.appendChild(el('span','chipsep')); sp.forEach(function(x){ var b=el('button','wxchip',x[1]); b.type='button'; b.setAttribute('aria-pressed',String(state.sel===x[0])); b.addEventListener('click',function(){ state.sel=x[0]; renderChips(); renderAnalysis(); }); box.appendChild(b); }); }
-  var on=box.querySelector('[aria-pressed="true"]'); if(on&&box.offsetParent) box.scrollLeft=Math.max(0,on.offsetLeft-box.offsetLeft-16);
+  var mk=function(row,id,label,cls){ var b=el('button',cls||null,label); b.type='button'; b.setAttribute('aria-pressed',String(state.sel===id)); b.addEventListener('click',function(){ state.sel=id; renderChips(); renderAnalysis(); }); row.appendChild(b); };
+  var sp=[['x-out','Außen',histOut()||hasDaily('x-out')],['x-wind','Wind',histWind()||hasDaily('x-wind')],['x-rain','Regen',histRain()||hasDaily('x-rain')]].filter(function(x){ return x[2]; });
+  if(sp.length){ var r1=el('div','chiprow'); r1.appendChild(el('span','rowlbl','Draußen')); sp.forEach(function(x){ mk(r1,x[0],x[1],'wxchip'); }); box.appendChild(r1); }
+  var list=state.sensors.slice().sort(function(a,b){ return (isNa(b)?1:0)-(isNa(a)?1:0)||(b.floor==null?1:b.floor)-(a.floor==null?1:a.floor)||(a.pos||99)-(b.pos||99); });
+  if(list.length){ var r2=el('div','chiprow'); r2.appendChild(el('span','rowlbl','Drinnen')); list.forEach(function(s){ mk(r2,s.id,s.name,s.type==='bad'?'bath':null); }); box.appendChild(r2); }
+  box.querySelectorAll('.chiprow').forEach(function(row){ var on=row.querySelector('[aria-pressed="true"]'); if(on&&row.offsetParent) row.scrollLeft=Math.max(0,on.offsetLeft-row.offsetLeft-80); });
 }
 var TABS=['uebersicht','haus','verlauf','empfehlungen','einstellungen'], curTab='uebersicht';
 function showTab(name,noHash){
@@ -1299,15 +1303,15 @@ function viewWin(end){ // Zeitfenster der Verlaufsansicht: Monat und Jahr als Ka
     w.label=k===0?(r===1?'letzte 24 Stunden':'letzte '+r+' Tage'):(r===1?(function(){ var o={day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}; return new Date(w.from).toLocaleString('de-DE',o)+' – '+new Date(w.to).toLocaleString('de-DE',o); })():f(w.from)+' – '+f(w.to,true)); }
   return w;
 }
-function setNav(w,first){ var nav=$('#rNav'); if(!nav) return; nav.hidden=!w; if(!w) return; var dd=state.naDay[state.sel]; if(hasDaily(state.sel)&&dd.ts.length&&(first==null||dd.ts[0]<first)) first=dd.ts[0]; $('#rLabel').textContent=w.label; $('#rNext').disabled=!(state.off>0); $('#rPrev').disabled=first==null||w.from<=first; }
+function setNav(w,first){ var nav=$('#rNav'); if(!nav) return; nav.hidden=!w; if(!w) return; var dd=dayData(state.sel); if(hasDaily(state.sel)&&dd.ts.length&&(first==null||dd.ts[0]<first)) first=dd.ts[0]; $('#rLabel').textContent=w.label; $('#rNext').disabled=!(state.off>0); $('#rPrev').disabled=first==null||w.from<=first; }
 function renderAnalysis(){
   var canLong=hasDaily(state.sel), isLong=state.range===0||state.range>30;
-  if(canLong&&!isLong&&state.range>1){ var fs=fineStart(state.sel), w0=viewWin(Date.now()); if(fs==null||fs>w0.from+(w0.to-w0.from)*0.15) isLong=true; }
+  if(canLong&&!isLong&&state.range>1&&state.naDay[state.sel]){ var fs=fineStart(state.sel), w0=viewWin(Date.now()); if(fs==null||fs>w0.from+(w0.to-w0.from)*0.15) isLong=true; }
   if(isLong&&!canLong){ if(state.range!==30) state.off=0; state.range=30; isLong=false; }
   document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); if(b.classList.contains('longr')) b.hidden=!canLong; });
   var stats=$('#stats'), pl=$('#phaseList'), al=$('#airList'), two=$('#histLists'); stats.textContent=''; pl.textContent=''; al.textContent=''; $('#monthBox').hidden=true; $('#topBox').hidden=true; $('#topBox').textContent='';
   if(isLong){ two.hidden=true; var nm=SPECIAL[state.sel]||((state.sensors.find(function(x){return x.id===state.sel;})||{}).name)||''; $('#histTitle').textContent='Verlauf: '+nm+' · Tageswerte'; return renderDaily(stats); }
-  if(canLong){ var mb=$('#monthBox'); mb.hidden=false; mb.textContent=''; var hint=el('p','small muted','Für Netatmo gibt es Tageswerte seit Einrichtung der Station. Mit „Jahr“ oder „Alles“ siehst du den Langzeitverlauf und den Vergleich zum Vorjahresmonat.'); hint.style.margin='0'; mb.appendChild(hint); }
+  if(canLong){ var mb=$('#monthBox'); mb.hidden=false; mb.textContent=''; var hint=el('p','small muted',(state.naDay[state.sel]?'Für Netatmo gibt es Tageswerte seit Einrichtung der Station. ':'')+'Mit „Jahr“ oder „Alles“ siehst du den Langzeitverlauf als Tageswerte und den Vergleich zum Vorjahresmonat.'); hint.style.margin='0'; mb.appendChild(hint); }
   var cT=cssVar('--temp'), cH=cssVar('--hum'), cC=cssVar('--co2'), cW=cssVar('--ink'), cG=cssVar('--muted');
   if(SPECIAL[state.sel]){ two.hidden=true; $('#histTitle').textContent='Verlauf: '+SPECIAL[state.sel]; return renderSpecial(stats,{cT:cT,cH:cH,cW:cW,cG:cG}); }
   two.hidden=false;
@@ -1398,7 +1402,19 @@ function setLegend(items){ var box=$('#legend'); box.textContent='';
 /* --- Netatmo-Archiv: Tageswerte, Langzeit und Vorjahresvergleich --- */
 var DAYFIELDS={indoor:['tavg','tmin','tmax','h','c'],outdoor:['tavg','tmin','tmax','h'],rain:['mm'],wind:['s','g']};
 function kindOfKey(k){ return k==='x-out'?'outdoor':(k==='x-rain'?'rain':(k==='x-wind'?'wind':'indoor')); }
-function hasDaily(k){ var D=state.naDay&&state.naDay[k]; return !!(D&&D.ts&&D.ts.length>1); }
+var tpDayCache={};
+function tpDaily(k){ // Tageswerte aus den gespeicherten Messwerten eines ThermoPro-Sensors (ab 30 Tagen Daten)
+  var s=state.sensors.find(function(x){ return x.id===k; }); if(!s||isNa(s)) return null;
+  var S=state.series[k]; if(!S||!S.ts.length||S.ts[S.ts.length-1]-S.ts[0]<30*DAY) return null;
+  var sig=S.ts.length+':'+S.ts[S.ts.length-1], c=tpDayCache[k]; if(c&&c.sig===sig) return c.D;
+  var D={k:k,kind:'indoor',src:'ThermoPro',ts:[],tavg:[],tmin:[],tmax:[],h:[],c:[]}, cur=null, st, sh, n, mn, mx;
+  var flush=function(){ if(cur==null||!n) return; D.ts.push(cur); D.tavg.push(Math.round(st/n*10)/10); D.tmin.push(mn); D.tmax.push(mx); D.h.push(Math.round(sh/n)); D.c.push(null); };
+  for(var i=0;i<S.ts.length;i++){ var d=startOfDay(S.ts[i]); if(d!==cur){ flush(); cur=d; st=0; sh=0; n=0; mn=Infinity; mx=-Infinity; }
+    var t=S.t[i]; st+=t; sh+=S.h[i]; n++; if(t<mn) mn=t; if(t>mx) mx=t; }
+  flush(); tpDayCache[k]={sig:sig,D:D}; return D;
+}
+function dayData(k){ var D=state.naDay&&state.naDay[k]; return D&&D.ts&&D.ts.length>1?D:tpDaily(k); }
+function hasDaily(k){ var D=dayData(k); return !!(D&&D.ts&&D.ts.length>1); }
 function fineStart(k){ var H=k==='x-out'?histOut():(k==='x-wind'?histWind():(k==='x-rain'?histRain():state.series[k])); return H&&H.ts&&H.ts.length?H.ts[0]:null; }
 function shortRange(){ return (state.range===0||state.range>30)?30:state.range; }
 async function fetchArchive(force){
@@ -1449,7 +1465,7 @@ function monthValue(m,met){ if(!m) return null; var f=met[0], how=met[4];
   if(how==='avg') return m.cnt[f]?m.sum[f]/m.cnt[f]:null; if(how==='sum') return m.cnt[f]?m.sum[f]:null; if(how==='min') return m.min[f]; if(how==='max') return m.max[f]; if(how==='wet') return m.wet; return null; }
 var monthMetric={};
 function renderDaily(stats){
-  var key=state.sel, D=state.naDay[key], kind=D.kind||kindOfKey(key), c={cT:cssVar('--temp'),cTs:cssVar('--temp-soft'),cH:cssVar('--hum'),cC:cssVar('--co2'),cW:cssVar('--ink'),cG:cssVar('--muted')};
+  var key=state.sel, D=dayData(key), kind=D.kind||kindOfKey(key), c={cT:cssVar('--temp'),cTs:cssVar('--temp-soft'),cH:cssVar('--hum'),cC:cssVar('--co2'),cW:cssVar('--ink'),cG:cssVar('--muted')};
   var lastTs=D.ts[D.ts.length-1], W0=state.range===0?null:viewWin(lastTs+DAY-1), to=W0?W0.to:lastTs+DAY, from=W0?Math.max(D.ts[0],W0.from):D.ts[0]; setNav(W0,D.ts[0]);
   var R=sliceBy(D,DAYFIELDS[kind],from,to); if(!R.ts.length) return noSpecial(stats);
   var gap=function(i){ return R.ts[i]-R.ts[i-1]>3*DAY; }, dfmt=function(ts){ return new Date(ts).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'numeric',year:'2-digit'}); };
@@ -1511,7 +1527,7 @@ function renderTops(lists,ts,note){
 }
 function renderMonthCompare(D,kind){
   var box=$('#monthBox'); box.hidden=false; box.textContent='';
-  var mets=MONTH_METRICS[kind], key=state.sel; if(kind==='wind'&&D.src==='Open-Meteo') mets=[['s','Ø Tageshöchstwind','km/h',mets[0][3],'avg'],['g','Ø Tageshöchstböe','km/h',mets[1][3],'avg']]; if(!monthMetric[key]) monthMetric[key]=mets[0][0]; var met=mets.find(function(m){return m[0]===monthMetric[key];})||mets[0];
+  var mets=MONTH_METRICS[kind].filter(function(m){ var arr=D[m[0]]; return !arr||arr.some(function(v){ return v!=null; }); }), key=state.sel; if(kind==='wind'&&D.src==='Open-Meteo') mets=[['s','Ø Tageshöchstwind','km/h',mets[0][3],'avg'],['g','Ø Tageshöchstböe','km/h',mets[1][3],'avg']]; if(!monthMetric[key]) monthMetric[key]=mets[0][0]; var met=mets.find(function(m){return m[0]===monthMetric[key];})||mets[0];
   var head=el('div','sechead'); head.appendChild(el('h3',null,'Monatsvergleich mit dem Vorjahr')); box.appendChild(head);
   if(mets.length>1){ var ch=el('div','chips'); mets.forEach(function(m){ var b=el('button',null,m[1]); b.type='button'; b.setAttribute('aria-pressed',String(m[0]===met[0])); b.addEventListener('click',function(){ monthMetric[key]=m[0]; renderMonthCompare(D,kind); }); ch.appendChild(b); }); box.appendChild(ch); }
   var now=new Date(), curK=now.getFullYear()*12+now.getMonth();
