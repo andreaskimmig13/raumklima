@@ -427,7 +427,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-10 22:20</p>
+    <p class="num">App-Version 2026-11-12 20:15</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -579,6 +579,19 @@ function airingEvents(S,sens){ // erkennt Lüften an Temperatursturz und/oder Ab
   }
   return out;
 }
+function coarseAiring(S,sens){ // grobe Erkennung in reinen Stundenwerten: deutlicher Einbruch gegenüber den Vorstunden, danach wieder Anstieg
+  var thr={weniger:1.5,normal:1.0,empfindlich:0.7}[sens]||1.0, ts=[], t=[], out=[];
+  for(var i=0;i<S.ts.length;i++){ if(S.q[i]===1&&S.ts[i]%HOUR===0){ ts.push(S.ts[i]); t.push(S.t[i]); } }
+  for(var k=1;k<ts.length-1;k++){
+    if(ts[k]-ts[k-1]!==HOUR) continue;
+    var base=t[k-1]; if(k>=2&&ts[k-1]-ts[k-2]===HOUR&&t[k-2]>base) base=t[k-2];
+    var dT=base-t[k]; if(dT<thr) continue;
+    var rec=false; for(var r=k+1;r<ts.length&&ts[r]-ts[k]<=3*HOUR;r++){ if(t[r]-t[k]>=dT*0.4){ rec=true; break; } }
+    if(!rec) continue;
+    out.push({from:ts[k],to:ts[k]+MIN,dur:null,drop:dT,dAbs:null,coarse:true,kind:'grob',forgotten:false}); k++;
+  }
+  return out;
+}
 function analyze(sensor, S, from, to, st, outdoorAt){
   var R=sliceSeries(S,from,to), n=R.ts.length;
   var thr=sensor.type==='bad'?st.thrBath:st.thr;
@@ -596,7 +609,7 @@ function analyze(sensor, S, from, to, st, outdoorAt){
     var best=0; hrs.forEach(function(v,hh){ if(v>best){ best=v; res.co2TopHour=hh; } }); }
   res.phases=humidPhases(R,thr,st.minPhase);
   res.phases.forEach(function(p){ if(p.dur>res.longestPhase) res.longestPhase=p.dur; res.startHours[new Date(p.from).getHours()]++; });
-  res.events=airingEvents(R,st.airSens);
+  res.events=airingEvents(R,st.airSens); res.coarseEvents=coarseAiring(R,st.airSens);
   var perDay={}; for(var k=0;k<n;k++){ if(R.q[k]>=2){ var d=localDayKey(R.ts[k]); perDay[d]=(perDay[d]||0)+1; } }
   res.airDays=Object.keys(perDay).filter(function(d){return perDay[d]>=600;}).length;
   res.days=Math.max(1,(Math.min(to,R.ts[n-1])-Math.max(from,R.ts[0]))/DAY);
@@ -874,7 +887,10 @@ async function fetchC(conn,mode){
 }
 function concat(arrs){ var n=0; arrs.forEach(function(a){ n+=a.length; }); var o=new Uint8Array(n), p=0; arrs.forEach(function(a){ o.set(a,p); p+=a.length; }); return o; }
 function protoOf(sensor,dev){ if(sensor.proto==='S'||sensor.proto==='C') return sensor.proto; return /TP357S/i.test((dev&&dev.name)||sensor.btName||'')?'S':'C'; }
-function lastMinuteTs(sid){ var S=state.series[sid]; if(!S||!S.ts.length) return null; for(var i=S.ts.length-1;i>=0;i--){ if(S.q[i]>=2) return S.ts[i]; } return null; }
+function lastMinuteTs(sid){ // Ende des letzten echten Minutenverlaufs (mind. 10 zusammenhängende Minutenwerte); einzelne Live- oder Funkwerte zählen nicht
+  var S=state.series[sid]; if(!S||!S.ts.length) return null; var run=0, end=null;
+  for(var i=S.ts.length-1;i>=0;i--){ if(S.q[i]>=2&&(end==null||S.ts[i+1]-S.ts[i]<=3*MIN)){ if(end==null) end=S.ts[i]; run++; if(run>=10) return end; } else { run=S.q[i]>=2?1:0; end=S.q[i]>=2?S.ts[i]:null; } }
+  return null; }
 function lastAnyTs(sid){ var S=state.series[sid]; return S&&S.ts.length?S.ts[S.ts.length-1]:null; }
 
 async function syncSensor(sensor,dev){
@@ -1329,9 +1345,12 @@ function renderAnalysis(){
               {label:'% rF',unit:'%',series:[{vals:R.h,color:cH}],avg:A.meanH,thr:[{v:A.thr,label:A.thr+' %',color:cH}],shade:A.phases,fmt:function(v){return String(Math.round(v));}}];
   var meanC=R.c?meanOf(R.c):null;
   if(meanC!=null) panels.push({label:'ppm CO₂',unit:'ppm',series:[{vals:R.c,color:cC}],avg:meanC,thr:[{v:1000,label:'1.000',color:cssVar('--warn')},{v:1400,label:'1.400',color:cssVar('--bad')}],fmt:function(v){return Math.round(v).toLocaleString('de-DE');},minLo:400});
-  chartSpec={from:from,to:to,ts:R.ts,gap:gap,panels:panels,events:A.events,
+  var coarse=[]; if(!isNa(s)){ var addC=function(a,b){ var L=coarse[coarse.length-1]; if(L&&a-L.to<=5*MIN) L.to=Math.max(L.to,b); else coarse.push({from:a,to:b}); };
+    for(var ci=0;ci<R.ts.length;ci++){ if(R.q[ci]<2) addC(R.ts[ci],R.ts[ci]+MIN); else if(ci>0&&R.ts[ci]-R.ts[ci-1]>30*MIN) addC(R.ts[ci-1],R.ts[ci]); }
+    coarse=coarse.filter(function(c){ return c.to-c.from>=20*MIN; }); }
+  chartSpec={from:from,to:to,ts:R.ts,gap:gap,panels:panels,events:A.events.concat(A.coarseEvents),coarse:coarse,
     hover:function(i){ return fmtDateTime(R.ts[i])+'   '+fmt1(R.t[i])+' °C   '+R.h[i]+' %'+(R.c&&R.c[i]?'   '+R.c[i]+' ppm':''); }};
-  var lg=[['--temp','Temperatur'],['--hum','rel. Luftfeuchte']]; if(meanC!=null) lg.push(['--co2','CO₂']); lg.push(['soft','Feuchtephase'],['avg','Durchschnitt']); if(!isNa(s)) lg.push(['tri','erkannte Lüftung']); setLegend(lg);
+  var lg=[['--temp','Temperatur'],['--hum','rel. Luftfeuchte']]; if(meanC!=null) lg.push(['--co2','CO₂']); lg.push(['soft','Feuchtephase'],['avg','Durchschnitt']); if(!isNa(s)) lg.push(['tri','erkannte Lüftung']); if(coarse.length) lg.push(['coarse','nur Stundenwerte']); if(A.coarseEvents.length) lg.push(['tri2','vermutete Lüftung (aus Stundenwerten)']); setLegend(lg);
   var perDay=A.airDays>0?(A.events.length/A.airDays):null;
   stats.appendChild(statEl(fmt1(A.meanT)+' °C','Ø Temperatur'));
   stats.appendChild(statEl(Math.round(A.meanH)+' %','Ø Luftfeuchte'));
@@ -1344,9 +1363,11 @@ function renderAnalysis(){
   if(!A.phases.length) pl.appendChild(el('div','li muted','Keine Phase über '+A.thr+' %, die länger als '+state.settings.minPhase+' min dauerte.'));
   A.phases.slice(-8).reverse().forEach(function(p){ var li=el('div','li'); li.appendChild(el('span',null,fmtDateTime(p.from))); li.appendChild(el('span','r',fmtDur(p.dur)+' · max '+p.maxH+' %')); pl.appendChild(li); });
   if(isNa(s)) al.appendChild(el('div','li muted','Netatmo liefert Werte im 30-Minuten-Raster, daraus lassen sich Lüftungen nicht zuverlässig erkennen.'));
-  else if(A.minuteQ<A.n*0.5) al.appendChild(el('div','li muted','Für die Lüftungserkennung fehlen Minutenwerte.'));
-  else if(!A.events.length) al.appendChild(el('div','li muted','Keine Lüftung erkannt.'));
-  A.events.slice(-8).reverse().forEach(function(e){
+  else { var cov=Math.min(1,A.minuteQ/Math.max(1,A.days*1440));
+    if(cov<0.9) al.appendChild(el('div','li muted',(A.minuteQ>=60?'Minutenwerte gibt es nur für etwa '+Math.round(cov*100)+' % des Zeitraums':'In diesem Zeitraum gibt es keine Minutenwerte')+'. Sicher erkennt die App Lüftungen nur dort. In den schraffierten Abschnitten liegen nur Stundenwerte vor; deutliche Einbrüche werden dort als „vermutet“ markiert, kurzes Lüften fällt aber meist durchs Raster. Der Sensor hält Minutenwerte nur etwa 24 Stunden, deshalb mindestens einmal täglich abrufen.')); }
+  if(isNa(s)){} else if(!A.events.length&&!A.coarseEvents.length&&A.minuteQ>=60) al.appendChild(el('div','li muted','Keine Lüftung erkannt.'));
+  A.events.concat(A.coarseEvents).sort(function(a,b){ return a.from-b.from; }).slice(-8).reverse().forEach(function(e){
+    if(e.coarse){ var lc=el('div','li'), lf=el('span'); lf.appendChild(el('span',null,fmtDateTime(e.from)+' ')); lf.appendChild(el('span','pill','vermutet')); lc.appendChild(lf); lc.appendChild(el('span','r','aus Stundenwerten · −'+fmt1(e.drop)+' K')); al.appendChild(lc); return; }
     var kind={stoss:'Stoßlüften',lang:'länger gelüftet',offen:'lange offen'}[e.kind];
     var li=el('div','li'), left=el('span'); left.appendChild(el('span',null,fmtDateTime(e.from)+' ')); left.appendChild(el('span','pill '+(e.kind==='stoss'?'ok':(e.forgotten?'bad':'warn')),kind));
     li.appendChild(left); li.appendChild(el('span','r',fmtDur(e.dur)+' · −'+fmt1(e.drop)+' K'+(e.dAbs!=null&&e.dAbs>=0.3?' · −'+fmt1(e.dAbs)+' g/m³':''))); al.appendChild(li); });
@@ -1396,8 +1417,10 @@ function startOfDay(ts){ var d=new Date(ts); d.setHours(0,0,0,0); return d.getTi
 function setLegend(items){ var box=$('#legend'); box.textContent='';
   items.forEach(function(it){ var sp=el('span'), i=el('i'), k=it[0];
     if(k==='soft'){ i.style.background='var(--hum-soft)'; i.style.height='10px'; }
+    else if(k==='coarse'){ i.style.background='repeating-linear-gradient(135deg,var(--muted) 0 1px,transparent 1px 4px)'; i.style.height='10px'; i.style.opacity='.6'; }
     else if(k==='avg'){ i.style.background='repeating-linear-gradient(90deg,var(--muted) 0 2px,transparent 2px 5px)'; }
     else if(k==='tri'){ sp.textContent='▼ '+it[1]; box.appendChild(sp); return; }
+    else if(k==='tri2'){ sp.textContent='▽ '+it[1]; box.appendChild(sp); return; }
     else if(k==='arrow'){ sp.textContent='➤ '+it[1]; box.appendChild(sp); return; }
     else i.style.background='var('+k+')';
     sp.appendChild(i); sp.appendChild(document.createTextNode(it[1])); box.appendChild(sp); }); }
@@ -1732,6 +1755,9 @@ function drawSpecOn(cv,spec,hoverX){
     var sc=niceScale(lo-(p.bars?0:(hi-lo)*0.05),hi+(hi-lo)*0.05,compact?2:(p.tall?5:4)); if(p.minLo===0) sc.lo=0; geo[pi].sc=sc;
     var G=geo[pi]; G.Y=function(v){ return G.y1-(v-sc.lo)/(sc.hi-sc.lo)*(G.y1-G.y0); }; });
   // Schattierung Feuchtephasen
+  if(spec.coarse&&spec.coarse.length){ g.save(); g.globalAlpha=0.16; g.strokeStyle=muted; g.lineWidth=1; spec.panels.forEach(function(p,pi){ var G=geo[pi];
+      spec.coarse.forEach(function(c){ var a=Math.max(x0,X(c.from)), b=Math.min(x1,X(c.to)); if(b-a<1) return; g.save(); g.beginPath(); g.rect(a,G.y0,b-a,G.y1-G.y0); g.clip();
+        g.beginPath(); for(var hx=a-(G.y1-G.y0);hx<b;hx+=6){ g.moveTo(hx,G.y1); g.lineTo(hx+(G.y1-G.y0),G.y0); } g.stroke(); g.restore(); }); }); g.restore(); }
   spec.panels.forEach(function(p,pi){ if(!p.shade) return; var G=geo[pi]; g.fillStyle=cSoft; p.shade.forEach(function(ph){ var a=Math.max(x0,X(ph.from)), b=Math.min(x1,X(ph.to)); if(b>a) g.fillRect(a,G.y0,Math.max(1,b-a),G.y1-G.y0); }); });
   // Raster
   g.lineWidth=1;
@@ -1775,7 +1801,7 @@ function drawSpecOn(cv,spec,hoverX){
   spec.panels.forEach(function(p,pi){ var G=geo[pi], col=p.series?p.series[p.series.length-1].color:p.color, txt=p.label+(p.avg!=null&&isFinite(p.avg)?'   Ø '+p.fmt(p.avg)+' '+p.unit:'');
     g.font='600 12px '+font; var tw=g.measureText(txt).width+8, ly=G.y0+(p.markers?20:(p.arrows?34:9)); g.fillStyle=surf; g.globalAlpha=.8; g.fillRect(x0+2,ly-8,tw,16); g.globalAlpha=1; g.fillStyle=col; g.textAlign='left'; g.fillText(txt,x0+6,ly); g.font='12px '+font; });
   // Lüftungsmarker
-  if(spec.events){ var G0=geo[0]; spec.events.forEach(function(e){ var x=X(e.from); if(x<x0||x>x1) return; g.fillStyle=e.kind==='stoss'?cOk:(e.forgotten?cBad:cWarn); g.beginPath(); g.moveTo(x-4,G0.y0+1); g.lineTo(x+4,G0.y0+1); g.lineTo(x,G0.y0+8); g.closePath(); g.fill(); }); }
+  if(spec.events){ var G0=geo[0]; spec.events.forEach(function(e){ var x=X(e.from); if(x<x0||x>x1) return; var col=e.coarse?muted:(e.kind==='stoss'?cOk:(e.forgotten?cBad:cWarn)); g.beginPath(); g.moveTo(x-4,G0.y0+1); g.lineTo(x+4,G0.y0+1); g.lineTo(x,G0.y0+8); g.closePath(); if(e.coarse){ g.strokeStyle=col; g.lineWidth=1.5; g.stroke(); } else { g.fillStyle=col; g.fill(); } }); }
   // Hover
   if(hoverX!=null&&hoverX>=x0&&hoverX<=x1){ var ts=from+(hoverX-x0)/(x1-x0)*(to-from), label=null, hx=hoverX;
     if(spec.ts.length&&spec.hover){ var idx=lowerBound(spec.ts,ts); if(idx>=spec.ts.length) idx=spec.ts.length-1; if(idx>0&&ts-spec.ts[idx-1]<spec.ts[idx]-ts) idx--; hx=X(spec.ts[idx]); label=spec.hover(idx);
