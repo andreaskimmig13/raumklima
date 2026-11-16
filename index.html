@@ -429,7 +429,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-15 23:30</p>
+    <p class="num">App-Version 2026-11-16 13:30</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -1716,7 +1716,7 @@ var miniSpec=null;
 function renderMini(){
   var sec=$('#miniBox'); if(!sec) return;
   var demo=state.demo, O=demo?histOut():state.naOutHist, Wd=demo?histWind():state.naWindHist, Rn=demo?histRain():state.naRainHist;
-  var day=miniRange()===1, to=Date.now(), from=day?to-DAY:startOfDay(to)-6*DAY, panels=[];
+  var day=miniRange()===1, to=Date.now(), from=day?to-DAY:startOfDay(to)-6*DAY, panels=[], axisTo=day?to:startOfDay(to)+DAY; // 7 Tage: heute als ganzer Tag, damit die Tage gleich breit sind
   
   document.querySelectorAll('#miniSeg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.mr===(day?1:7))); });
   var cT=cssVar('--temp'), cH=cssVar('--hum'), cG=cssVar('--muted');
@@ -1730,7 +1730,7 @@ function renderMini(){
   else if(hasDaily('x-rain')){ var D=state.naDay['x-rain'], rr=sliceBy(D,['mm'],from,to+DAY); rr.ts.forEach(function(t,i){ bars.push({from:startOfDay(t),to:startOfDay(t)+DAY,v:Math.round((rr.mm[i]||0)*10)/10}); }); }
   if(bars.length) panels.push({label:day?'Regen mm pro Stunde   Summe '+fmt1(bars.reduce(function(a,b){return a+b.v;},0)):'Regen mm pro Tag',unit:'mm',bars:bars,barLabels:day,color:cH,fmt:fmt1,minLo:0});
   sec.hidden=!panels.length; if(!panels.length){ miniSpec=null; return; }
-  miniSpec={from:from,to:to,ts:[],panels:panels,compact:true}; drawMini();
+  miniSpec={from:from,to:axisTo,ts:[],panels:panels,compact:true}; drawMini();
 }
 function miniRange(){ if(state.miniR) return state.miniR; try{ return localStorage.getItem('hk-mini')==='1'?1:7; }catch(e){ return 7; } }
 function setMiniRange(v){ state.miniR=v; try{ localStorage.setItem('hk-mini',String(v)); }catch(e){} renderMini(); }
@@ -1783,7 +1783,12 @@ function drawSpecOn(cv,spec,hoverX){
     for(;md.getTime()<=to;md.setMonth(md.getMonth()+1)){ var mx=Math.round(X(md.getTime()))+.5; var jan=md.getMonth()===0; g.strokeStyle=line; g.globalAlpha=jan?1:.6; g.beginPath(); g.moveTo(mx,yTop); g.lineTo(mx,yBot); g.stroke(); g.globalAlpha=1;
       if(md.getMonth()%mstep===0&&mx>x0+16&&mx<x1-16) g.fillText(jan||mstep>=12?String(md.getFullYear()):md.toLocaleDateString('de-DE',{month:'short'}).replace('.',''),mx,yBot+14); } }
   else if(dayStep===0){ var d0=new Date(from); d0.setMinutes(0,0,0); for(var t=d0.getTime();t<=to;t+=HOUR){ var hh=new Date(t).getHours(); if(hh%6!==0||t<from) continue; var xx=Math.round(X(t))+.5; g.strokeStyle=line; g.beginPath(); g.moveTo(xx,yTop); g.lineTo(xx,yBot); g.stroke(); g.fillText(hh+' Uhr',xx,yBot+14); } }
-  else { var dd=new Date(from); dd.setHours(0,0,0,0); dd.setDate(dd.getDate()+1); for(var k=0;dd.getTime()<=to;dd.setDate(dd.getDate()+1),k++){ var x=Math.round(X(dd.getTime()))+.5; g.strokeStyle=line; g.beginPath(); g.moveTo(x,yTop); g.lineTo(x,yBot); g.stroke(); if(k%dayStep===0&&x>x0+14&&x<x1-14) g.fillText(dd.toLocaleDateString('de-DE',{weekday:'short',day:'numeric'}),x,yBot+14); } }
+  else { var dd=new Date(from), shortLbl=(X(from+DAY)-X(from))*dayStep<g.measureText('Mi., 30.').width+8, lbls=[]; dd.setHours(0,0,0,0); // Trennlinie um Mitternacht, Tagesname mittig unter dem jeweiligen Tag
+    for(var k=0;dd.getTime()<to;k++){ var ds=dd.getTime(); dd.setDate(dd.getDate()+1); var de=dd.getTime(), da=Math.max(ds,from), db=Math.min(de,to);
+      if(ds>from){ var x=Math.round(X(ds))+.5; g.strokeStyle=line; g.beginPath(); g.moveTo(x,yTop); g.lineTo(x,yBot); g.stroke(); }
+      if(k%dayStep!==0||db-da<0.35*DAY) continue; var ldd=new Date(ds), lt=shortLbl?ldd.toLocaleDateString('de-DE',{weekday:'short'}).replace('.','')+' '+ldd.getDate():ldd.toLocaleDateString('de-DE',{weekday:'short',day:'numeric'}), lw=g.measureText(lt).width;
+      var cx=Math.min(W-2-lw/2,Math.max(2+lw/2,X((da+db)/2))); lbls.push({t:lt,cx:cx,l:cx-lw/2,r:cx+lw/2,full:db-da>=0.95*DAY}); }
+    var shown=[]; [true,false].forEach(function(full){ lbls.forEach(function(L){ if(L.full!==full) return; if(shown.some(function(o){ return L.l<o.r+6&&L.r>o.l-6; })) return; shown.push(L); g.fillText(L.t,L.cx,yBot+14); }); }); } // ganze Tage zuerst, angeschnittene nur, wenn Platz ist
   // Schwellen
   spec.panels.forEach(function(p,pi){ var G=geo[pi]; (p.thr||[]).forEach(function(t){ if(t.v<G.sc.lo||t.v>G.sc.hi) return; var ty=Math.round(G.Y(t.v))+.5; g.save(); g.setLineDash([5,4]); g.strokeStyle=t.color; g.globalAlpha=.75; g.beginPath(); g.moveTo(x0,ty); g.lineTo(x1,ty); g.stroke(); g.restore(); g.fillStyle=t.color; g.textAlign='right'; g.fillText(t.label,x1-2,ty-8); }); });
   // Balken
