@@ -429,7 +429,7 @@ footer{font-size:.82rem;color:var(--muted)}
   </section>
 
   <footer>
-    <p class="num">App-Version 2026-11-16 13:30</p>
+    <p class="num">App-Version 2026-11-17 11:00</p>
     <p>Funktioniert in Chrome auf Android und am PC (Web Bluetooth). Unterstützt ThermoPro/TempPro TP357, TP358, TP359 und TP357S. Das Bluetooth-Protokoll ist nicht offiziell dokumentiert, sondern von Bastlern entschlüsselt; nach einem Firmware-Update kann der Abruf ausfallen. Die Lüftungserkennung schätzt anhand von Temperatur- und Feuchteabfall und kann sich irren; die Empfindlichkeit lässt sich in den Einstellungen anpassen.</p>
   </footer>
   </div>
@@ -955,7 +955,7 @@ async function syncAll(auto,floor){
   if(state.busy) return;
   var bt=state.sensors.filter(function(s){ return !isNa(s)&&!s.demo; });
   if(state.demo||(!bt.length&&!naConfigured())){ showTab('einstellungen'); setStatus('Koppel zuerst einen Sensor.'); return; }
-  if(floor==null && naConfigured()){ var nr=await syncNetatmo(!auto); if(nr&&!nr.skipped){ renderAll(); if(!nr.error&&!auto) setStatus('Netatmo aktualisiert.'); } }
+  if(floor==null && naConfigured() && !(auto&&state.naRefreshing)){ var nr=await syncNetatmo(!auto); if(nr&&!nr.skipped){ renderAll(); if(!nr.error&&!auto) setStatus('Netatmo aktualisiert.'); } }
   if(!bt.length){ if(state.naErr&&!auto) setStatus('Netatmo: '+state.naErr,true); return; }
   if(!btAvailable()){ if(!auto) setStatus('Bluetooth ist hier nicht verfügbar.',true); return; }
   await knownDevices();
@@ -1003,6 +1003,7 @@ function handleBtError(e){ var m=e&&e.message||String(e);
 /* --- Netatmo (über die Google-Apps-Script-Brücke) --- */
 function naConfigured(){ return !!(state.settings&&state.settings.naUrl&&state.settings.naKey); }
 function isNa(s){ return s&&s.source==='netatmo'; }
+function rainLiveToday(){ var r=state.na&&state.na.rain; return r&&r.h24!=null&&r.ts&&startOfDay(r.ts)===startOfDay(Date.now())?r.h24:null; } // Netatmo-Tageswert seit Mitternacht
 function rainHistToday(){ var H=state.naRainHist, d0=startOfDay(Date.now()), sum=0; if(!H||!H.ts) return 0; for(var i=0;i<H.ts.length;i++) if(H.ts[i]>=d0) sum+=H.mm[i]||0; return sum; }
 function rainLags(rain){ return !!(rain&&rain.h24!=null&&((rain.h1||0)>0||Math.abs(rain.h24-rainHistToday())>=0.2)); } // Regen-Stundenwerte hinken dem Live-Wert hinterher
 async function fetchNetatmo(force,rainOnly){
@@ -1401,6 +1402,7 @@ function renderSpecial(stats,c){
   } else { H=histRain(); if(!H) return noSpecial(stats); var P=sliceBy(H,['mm'],from,to); if(!P.ts.length) return noSpecial(stats);
     var daily=state.range>2, bars=[], bucket={};
     for(var j=0;j<P.ts.length;j++){ var v=P.mm[j]||0; var key=daily?startOfDay(P.ts[j]):P.ts[j]; bucket[key]=(bucket[key]||0)+v; }
+    if(daily){ var lt0=rainLiveToday(), k0=startOfDay(Date.now()); if(lt0!=null&&k0>=from&&k0<=to) bucket[k0]=lt0; }
     Object.keys(bucket).map(Number).sort(function(a,b){return a-b;}).forEach(function(k){ bars.push({from:k,to:daily?k+DAY:k+HOUR,v:Math.round(bucket[k]*10)/10}); });
     var sum=bars.reduce(function(a,b){return a+b.v;},0), wet=daily?bars.filter(function(b){return b.v>=WET_MM;}).length:null, maxB=bars.reduce(function(a,b){return b.v>a.v?b:a;},{v:0});
     var maxH=Math.max.apply(null,P.mm.map(function(x){return x||0;}));
@@ -1726,7 +1728,7 @@ function renderMini(){
   var bars=[];
   if(day){ if(Rn&&Rn.ts&&Rn.ts.length){ var hb={}, r1=sliceBy(Rn,['mm'],from-HOUR,to); r1.ts.forEach(function(t,i){ var k=hourSlot(t); hb[k]=(hb[k]||0)+(r1.mm[i]||0); });
       for(var hk=hourSlot(from);hk<to;hk+=HOUR) bars.push({from:Math.max(from,hk),to:Math.min(to,hk+HOUR),v:Math.round((hb[hk]||0)*10)/10}); } }
-  else if(Rn&&Rn.ts&&Rn.ts.length){ var b={}; var r=sliceBy(Rn,['mm'],from,to); r.ts.forEach(function(t,i){ var k=startOfDay(t); b[k]=(b[k]||0)+(r.mm[i]||0); }); for(var dd=from;dd<to;dd+=DAY){ var k=startOfDay(dd+HOUR*3); bars.push({from:k,to:k+DAY,v:Math.round((b[k]||0)*10)/10}); } }
+  else if(Rn&&Rn.ts&&Rn.ts.length){ var b={}; var r=sliceBy(Rn,['mm'],from,to); r.ts.forEach(function(t,i){ var k=startOfDay(t); b[k]=(b[k]||0)+(r.mm[i]||0); }); var lt=rainLiveToday(); if(lt!=null) b[startOfDay(Date.now())]=lt; for(var dd=from;dd<to;dd+=DAY){ var k=startOfDay(dd+HOUR*3); bars.push({from:k,to:k+DAY,v:Math.round((b[k]||0)*10)/10}); } }
   else if(hasDaily('x-rain')){ var D=state.naDay['x-rain'], rr=sliceBy(D,['mm'],from,to+DAY); rr.ts.forEach(function(t,i){ bars.push({from:startOfDay(t),to:startOfDay(t)+DAY,v:Math.round((rr.mm[i]||0)*10)/10}); }); }
   if(bars.length) panels.push({label:day?'Regen mm pro Stunde   Summe '+fmt1(bars.reduce(function(a,b){return a+b.v;},0)):'Regen mm pro Tag',unit:'mm',bars:bars,barLabels:day,color:cH,fmt:fmt1,minLo:0});
   sec.hidden=!panels.length; if(!panels.length){ miniSpec=null; return; }
@@ -1880,6 +1882,7 @@ async function boot2(){
   if(!state.sel||!state.sensors.find(function(s){return s.id===state.sel;})) state.sel=state.sensors.length?state.sensors[0].id:null;
   fillSettings(); await knownDevices(); renderAll();
   try{ if(navigator.storage&&navigator.storage.persist&&!state.demo) navigator.storage.persist(); }catch(e){}
+  if(!state.demo && naConfigured()) setTimeout(naAutoRefresh,300);
   if(!state.demo && state.settings.autoSync) setTimeout(function(){ syncAll(true); },800);
   else if(!state.demo && naConfigured()) setTimeout(function(){ fetchArchive(false); },1500);
   if(!state.demo){ loadOutdoor().then(function(){ renderOutdoor(); renderTips(); renderAnalysis(); }); }
@@ -1888,6 +1891,13 @@ document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener
 $('#rPrev').addEventListener('click',function(){ state.off=(state.off||0)+1; renderAnalysis(); });
 $('#rNext').addEventListener('click',function(){ state.off=Math.max(0,(state.off||0)-1); renderAnalysis(); });
 $('#btnSyncAll').addEventListener('click',function(){ syncAll(false); });
+function naAutoRefresh(){ // Netatmo-Werte nachladen, solange die App sichtbar ist (alle 10 min) und beim Zurückkehren in die App
+  if(state.demo||!naConfigured()||document.visibilityState!=='visible'||state.naRefreshing) return;
+  if(state.na&&state.na.fetched&&Date.now()-state.na.fetched<9*MIN) return;
+  state.naRefreshing=true; syncNetatmo(false).then(function(r){ if(r&&!r.skipped&&!r.error) renderAll(); }).finally(function(){ state.naRefreshing=false; });
+}
+setInterval(naAutoRefresh,60*1000);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') naAutoRefresh(); });
 document.querySelectorAll('.tabs button').forEach(function(b){ b.addEventListener('click',function(){ showTab(b.dataset.tab); }); });
 $('#btnBack').addEventListener('click',function(){ showTab('uebersicht'); });
 $('#miniMore').addEventListener('click',function(){ state.sel='x-out'; state.range=miniRange(); state.off=0; showTab('verlauf'); });
