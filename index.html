@@ -294,8 +294,8 @@ footer{font-size:.82rem;color:var(--muted)}
   <div class="pane" data-pane="uebersicht">
     <section class="landing" id="landing"></section>
     <section id="miniBox" class="panel mini" hidden>
-      <div class="sechead"><h3 id="miniTitle">Draußen</h3><div class="seg seg-s" id="miniSeg" role="group" aria-label="Zeitraum"><button type="button" data-mr="1" aria-pressed="false">24 h</button><button type="button" data-mr="7" aria-pressed="true">7 Tage</button></div><button type="button" class="linkbtn" id="miniMore">mehr</button></div>
-      <canvas id="miniChart" aria-label="Temperatur, Böen und Regen der letzten 7 Tage"></canvas>
+      <div class="sechead"><h3 id="miniTitle">Draußen</h3><div class="seg seg-s" id="miniSeg" role="group" aria-label="Zeitraum"><button type="button" data-mr="1" aria-pressed="true">24 h</button><button type="button" data-mr="7" aria-pressed="false">7 Tage</button></div><button type="button" class="linkbtn" id="miniMore">mehr</button></div>
+      <canvas id="miniChart" aria-label="Temperatur, Böen und Regen"></canvas>
     </section>
   </div>
 
@@ -327,8 +327,8 @@ footer{font-size:.82rem;color:var(--muted)}
     <div class="sechead">
       <h2 id="histTitle">Verlauf</h2>
       <div class="seg" role="group" aria-label="Zeitraum">
-        <button type="button" data-range="1" aria-pressed="false">24 h</button>
-        <button type="button" data-range="7" aria-pressed="true">7 T</button>
+        <button type="button" data-range="1" aria-pressed="true">24 h</button>
+        <button type="button" data-range="7" aria-pressed="false">7 T</button>
         <button type="button" data-range="14" aria-pressed="false">14 T</button>
         <button type="button" data-range="30" aria-pressed="false">Monat</button>
         <button type="button" data-range="365" aria-pressed="false" class="longr" hidden>Jahr</button>
@@ -735,7 +735,7 @@ function makeDemo(now){
 /* ===== Oberfläche, Bluetooth, Speicher ===== */
 var SVC='00010203-0405-0607-0809-0a0b0c0d1910';
 var CH_NOTIFY='00010203-0405-0607-0809-0a0b0c0d2b10', CH_WRITE='00010203-0405-0607-0809-0a0b0c0d2b11';
-var state={sensors:[], series:{}, sel:null, range:7, off:0, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null, naDay:{}};
+var state={sensors:[], series:{}, sel:null, range:1, off:0, demo:false, settings:null, outdoor:null, busy:false, devices:new Map(), na:null, naDay:{}};
 var DEFAULTS={k:'settings', thr:62, thrBath:70, minPhase:60, place:'', lat:null, lon:null, autoSync:true, autoAfterH:3, floors:['Keller','Erdgeschoss','Dachgeschoss'], floorsV2:true, naUrl:'', naKey:'', airSens:'normal', wallQ:'gut'};
 var $=function(s){return document.querySelector(s);};
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
@@ -1333,7 +1333,7 @@ function renderAnalysis(){
   var canLong=hasDaily(state.sel), isLong=state.range===0||state.range>30;
   if(canLong&&!isLong&&state.range>1&&state.naDay[state.sel]){ var fs=fineStart(state.sel), w0=viewWin(Date.now()); if(fs==null||fs>w0.from+(w0.to-w0.from)*0.15) isLong=true; }
   if(isLong&&!canLong){ if(state.range!==30) state.off=0; state.range=30; isLong=false; }
-  document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); if(b.classList.contains('longr')) b.hidden=!canLong; });
+  document.querySelectorAll('.seg button[data-range]').forEach(function(b){ b.setAttribute('aria-pressed',String(+b.dataset.range===state.range)); if(b.classList.contains('longr')) b.hidden=!canLong; });
   var stats=$('#stats'), pl=$('#phaseList'), al=$('#airList'), two=$('#histLists'); stats.textContent=''; pl.textContent=''; al.textContent=''; $('#monthBox').hidden=true; $('#topBox').hidden=true; $('#topBox').textContent='';
   if(isLong){ two.hidden=true; var nm=SPECIAL[state.sel]||((state.sensors.find(function(x){return x.id===state.sel;})||{}).name)||''; $('#histTitle').textContent='Verlauf: '+nm+' · Tageswerte'; return renderDaily(stats); }
   if(canLong){ var mb=$('#monthBox'); mb.hidden=false; mb.textContent=''; var hint=el('p','small muted',(state.naDay[state.sel]?'Für Netatmo gibt es Tageswerte seit Einrichtung der Station. ':'')+'Mit „Jahr“ oder „Alles“ siehst du den Langzeitverlauf als Tageswerte und den Vergleich zum Vorjahresmonat.'); hint.style.margin='0'; mb.appendChild(hint); }
@@ -1734,7 +1734,7 @@ function renderMini(){
   sec.hidden=!panels.length; if(!panels.length){ miniSpec=null; return; }
   miniSpec={from:from,to:axisTo,ts:[],panels:panels,compact:true}; drawMini();
 }
-function miniRange(){ if(state.miniR) return state.miniR; try{ return localStorage.getItem('hk-mini')==='1'?1:7; }catch(e){ return 7; } }
+function miniRange(){ return state.miniR||1; } // beim Start immer 24 h
 function setMiniRange(v){ state.miniR=v; try{ localStorage.setItem('hk-mini',String(v)); }catch(e){} renderMini(); }
 function drawMini(){ var cv=$('#miniChart'); if(cv&&miniSpec) drawSpecOn(cv,miniSpec,null); }
 
@@ -1887,7 +1887,7 @@ async function boot2(){
   else if(!state.demo && naConfigured()) setTimeout(function(){ fetchArchive(false); },1500);
   if(!state.demo){ loadOutdoor().then(function(){ renderOutdoor(); renderTips(); renderAnalysis(); }); }
 }
-document.querySelectorAll('.seg button').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; state.off=0; renderAnalysis(); renderTips(); }); });
+document.querySelectorAll('.seg button[data-range]').forEach(function(b){ b.addEventListener('click',function(){ state.range=+b.dataset.range; state.off=0; renderAnalysis(); renderTips(); }); });
 $('#rPrev').addEventListener('click',function(){ state.off=(state.off||0)+1; renderAnalysis(); });
 $('#rNext').addEventListener('click',function(){ state.off=Math.max(0,(state.off||0)-1); renderAnalysis(); });
 $('#btnSyncAll').addEventListener('click',function(){ syncAll(false); });
