@@ -1011,16 +1011,19 @@ async function fetchNetatmo(force,rainOnly){
   var meta=(await safe(dbGet('meta','netatmo')))||{k:'netatmo'};
   if(!force && !rainOnly && meta.fetched && Date.now()-meta.fetched<8*MIN && state.na) return {skipped:true};
   var windMissing=state.na&&state.na.windDiag&&state.na.windDiag.found&&!(state.naWindHist&&state.naWindHist.ts&&state.naWindHist.ts.length);
-  var wantHist=rainOnly || force || windMissing || !meta.histAt || Date.now()-meta.histAt>HOUR;
-  var days=rainOnly?1:wantHist?((force||windMissing||!meta.histAt)?14:Math.min(14,Math.ceil((Date.now()-meta.histAt)/DAY)+1)):0;
+  var heal=!force && !rainOnly && naIndoorGap() && Date.now()-(meta.healAt||0)>HOUR; // fehlen Innenwerte der letzten 24 h, höchstens einmal pro Stunde 14 Tage neu laden
+  if(heal) meta.healAt=Date.now();
+  var wantHist=rainOnly || force || windMissing || heal || !meta.histAt || Date.now()-meta.histAt>HOUR;
+  var days=rainOnly?1:wantHist?((force||windMissing||heal||!meta.histAt)?14:Math.min(14,Math.ceil((Date.now()-meta.histAt)/DAY)+1)):0;
   var url=state.settings.naUrl+(state.settings.naUrl.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(state.settings.naKey)+(days?'&days='+days:'');
   var r=await withTimeout(fetch(url,{redirect:'follow'}),45000,'Die Netatmo-Brücke antwortet nicht.');
   var j=await r.json(); if(j.error) throw new Error('Netatmo-Brücke: '+j.error);
-  var na={fetched:Date.now(), outdoor:null, rain:null, wind:null, indoor:0, windDiag:{found:false}};
+  var na={fetched:Date.now(), outdoor:null, rain:null, wind:null, indoor:0, windDiag:{found:false}}, histErr=[];
   for(var si=0;si<(j.stations||[]).length;si++){ var st=j.stations[si]; if(st.loc) na.loc=st.loc;
     for(var ii=0;ii<st.indoor.length;ii++){ var ind=st.indoor[ii], sid='na-'+ind.id, sensor=state.sensors.find(function(x){return x.id===sid;});
       if(!sensor){ sensor={id:sid,name:ind.name||'Netatmo innen',type:'wohn',floor:1,pos:0,source:'netatmo',btName:'Netatmo '+(ind.module?'Innenmodul':'Basisstation'),created:Date.now()}; state.sensors.push(sensor); state.series[sid]={ts:[],t:[],h:[],q:[]}; }
       var recs=[];
+      if(days&&!(Array.isArray(ind.history)&&ind.history.length)) histErr.push((ind.name||'Innenmodul')+': '+(ind.history&&ind.history.error?ind.history.error:'keine Verlaufswerte geliefert'));
       if(Array.isArray(ind.history)) ind.history.forEach(function(row){ var ts=row[0], t=row[1], h=row[2], c=row[3]; if(t==null||h==null) return; for(var m=0;m<30;m++){ var tt=ts+m*MIN; if(tt>Date.now()) break; recs.push({ts:tt,t:t,h:Math.round(h),q:1,c:c}); } });
       if(ind.t!=null&&ind.h!=null&&ind.ts){ sensor.live={t:ind.t,h:Math.round(ind.h),co2:ind.co2,ts:ind.ts}; recs.push({ts:Math.floor(ind.ts/MIN)*MIN,t:ind.t,h:Math.round(ind.h),q:2,c:ind.co2}); }
       if(recs.length) await storeRecords(sid,recs);
@@ -1030,10 +1033,15 @@ async function fetchNetatmo(force,rainOnly){
     if(st.wind){ if(Array.isArray(st.wind.history)&&st.wind.history.length) state.naWindHist=await mergeHist('nawind',['s','g','a'],st.wind.history,120,{replace:true}); na.wind=stripHist(st.wind);
       na.windDiag={found:true,ts:st.wind.ts,reachable:st.wind.reachable,battery:st.wind.battery,strength:st.wind.strength,hist:Array.isArray(st.wind.history)?st.wind.history.length:null,histErr:st.wind.historyError||(st.wind.history&&st.wind.history.error)||null,keys:st.wind.keys||null}; }
     if(st.rain){ if(Array.isArray(st.rain.history)) state.naRainHist=await mergeHist('narain',['mm'],st.rain.history,120,{slot:hourSlot,replace:true}); na.rain=stripHist(st.rain); } }
-  state.na=na; meta.fetched=na.fetched; if(days) meta.histAt=Date.now(); meta.na=na; await safe(dbPut('meta',meta));
+  if(histErr.length) na.histErr=histErr.join(' | ');
+  state.na=na; meta.fetched=na.fetched; if(days&&!histErr.length) meta.histAt=Date.now(); meta.na=na; await safe(dbPut('meta',meta));
   if(!days&&!rainOnly&&rainLags(na.rain)&&Date.now()-(meta.histAt||0)>10*MIN){ try{ return await fetchNetatmo(false,true); }catch(e){} } // regnet es, Tagesbalken gleich mit nachziehen
   return na;
 }
+function naIndoorGap(){ var from=Date.now()-DAY, to=Date.now()-HOUR, gap=2*HOUR;
+  return state.sensors.some(function(s){ if(!isNa(s)) return false; var S=state.series[s.id]; if(!S||!S.ts.length) return true;
+    var R=sliceSeries(S,from,to), t=R.ts.filter(function(x,i){ return R.q[i]<2; }); if(!t.length) return true; if(t[0]-from>gap||to-t[t.length-1]>gap) return true;
+    for(var i=1;i<t.length;i++) if(t[i]-t[i-1]>gap) return true; return false; }); }
 function stripHist(o){ var c={}; Object.keys(o).forEach(function(k){ if(k!=='history') c[k]=o[k]; }); return c; }
 async function mergeHist(key,fields,rows,keepDays,opt){ // opt.slot: Zeitstempel auf festes Raster legen; opt.replace: alte Werte im neu gelieferten Zeitraum verwerfen (verhindert doppelt gezählte Summen)
   opt=opt||{}; var slot=opt.slot||function(t){ return t; };
@@ -1861,7 +1869,7 @@ async function importBackup(file){
 
 /* --- Start --- */
 function renderNaStatus(){ var p=$('#naStatus'); if(!p) return; if(!naConfigured()){ p.textContent='Noch nicht eingerichtet.'; return; }
-  var na=state.na; p.textContent=state.naErr?'Fehler: '+state.naErr:(na?'Aktuelle Werte: zuletzt '+ageText(na.fetched)+', '+na.indoor+' Innenmodul(e)'+(na.outdoor?', Außen':'')+(na.rain?', Regen':'')+(na.wind?', Wind':'')+'.':'Eingerichtet, noch nicht abgerufen.'); p.style.color=state.naErr?'var(--bad)':'';
+  var na=state.na; p.textContent=state.naErr?'Fehler: '+state.naErr:(na?'Aktuelle Werte: zuletzt '+ageText(na.fetched)+', '+na.indoor+' Innenmodul(e)'+(na.outdoor?', Außen':'')+(na.rain?', Regen':'')+(na.wind?', Wind':'')+'.'+(na.histErr?' Verlauf fehlt: '+na.histErr+'. Die App versucht es beim nächsten Abruf erneut.':''):'Eingerichtet, noch nicht abgerufen.'); p.style.color=state.naErr?'var(--bad)':(na&&na.histErr?'var(--warn)':'');
   var wd=$('#naWindStatus'); if(wd){ var d=na&&na.windDiag, aw=state.archWindDiag, t;
     if(!na) t=''; else if(!d||!d.found) t='Windmesser: nicht in den Netatmo-Daten enthalten. Ist er derselben Station zugeordnet?';
     else { t='Windmesser: gefunden'+(d.reachable===false?', aber nicht erreichbar':'')+(d.battery!=null?', Akku '+d.battery+' %':'')+(d.ts?', letzter Wert '+ageText(d.ts):', kein aktueller Wert')+(d.strength!=null?' ('+Math.round(d.strength)+' km/h)':'')+'.';
